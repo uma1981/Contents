@@ -1,0 +1,478 @@
+Case Classes and Pattern Matching
+---------------------------------
+
+15.1 A simple example
+---------------------
+abstract class Expr
+case class Var(name: String) extends Expr
+case class Number(num: Double) extends Expr
+case class UnOp(operator: String, arg: Expr) extends Expr
+case class BinOp(operator: String,left: Expr, right: Expr) extends Expr
+
+The bodies of all five classes are empty. As mentioned previously, in Scala you can leave out the braces around an empty class body if you wish, so class C is the same as class C {}.
+
+Case classes
+------------
+A Scala Case Class is like a regular class, except it is good for modeling immutable data. It also serves useful in pattern matching.
+
+The other noteworthy thing about the declarations of above is that each subclass has a case modifier. Classes with such a modifier are called case classes. Using the modifier makes the Scala compiler add some syntactic conveniences to your class.
+
+First, it adds a factory method with the name of the class. This means you can write say, Var("x") to construct a Var object instead of the slightly longer new Var("x"):
+
+scala> val v = Var("x")
+v: Var = Var(x)
+
+The factory methods are particularly nice when you nest them. Because there are no noisy new keywords sprinkled throughout the code, you can take in the expression’s structure at a glance:
+
+scala> val op = BinOp("+", Number(1), v)
+op: BinOp = BinOp(+,Number(1.0),Var(x))
+
+The second syntactic convenience is that all arguments in the parameter list of a case class implicitly get a val prefix, so they are maintained as fields:
+
+scala> v.name
+res0: String = x
+
+scala> op.left
+res1: Expr = Number(1.0)
+
+Third, the compiler adds “natural” implementations of methods toString, hashCode, and equals to your class. Since == in Scala always delegates to equals, this means that elements of case classes are always compared structurally:
+
+scala> println(op)
+BinOp(+,Number(1.0),Var(x))
+
+scala> op.right == Var("x")
+res3: Boolean = true
+
+Finally, the compiler adds a copy method to your class for making modified copies. This method is useful for making a new instance of the class that is the same as another one except that one or two attributes are different.
+
+For any parameter you don’t specify, the value from the old object is used. As an example, here is how you can make an operation just like op except that the operator has changed:
+
+scala> op.copy(operator = "")
+res4: BinOp = BinOp(,Number(1.0),Var(x))
+
+All these conventions add a lot of convenience, at a small price. However, the biggest advantage of case classes is that they support pattern matching.
+
+Please see the example for pattern matching.
+
+15.2 Kinds of patterns
+----------------------
+
+Wildcard patterns
+-----------------
+
+The wildcard pattern (_) matches any object whatsoever. You have already seen it used as a default, catch-all alternative, like this:
+
+expr match {
+case BinOp(op, left, right) => println(expr +" is a binary operation")
+case _ =>
+}
+
+For example, the previous example does not actually care what the elements of a binary operation are. It just checks whether it is a binary operation at all.
+
+Thus the code can just as well use the wildcard pattern for the elements of the BinOp
+
+expr match {
+case BinOp(_, _, _) => println(expr +" is a binary operation")
+case _ => println("It's something else")
+}
+
+Constant patterns
+-----------------
+
+A constant pattern matches only itself. Any literal may be used as a constant. For example, 5, true, and "hello" are all constant patterns. Also, any val or singleton object can be used as a constant. For example, Nil, a singleton object, is a pattern that matches only the empty list. 
+
+def describe(x: Any) = x match {
+case 5 => "five"
+case true => "truth"
+case "hello" => "hi!"
+case Nil => "the empty list"
+case _ => "something else"
+}
+
+Here is how the pattern works
+
+scala> describe(5)
+res6: java.lang.String = five
+
+scala> describe(true)
+res7: java.lang.String = truth
+
+scala> describe("hello")
+res8: java.lang.String = hi!
+
+scala> describe(Nil)
+res9: java.lang.String = the empty list
+
+scala> describe(List(1,2,3))
+res10: java.lang.String = something else
+
+Variable patterns
+-----------------
+A variable pattern matches any object, just like a wildcard. Unlike a wildcard, Scala binds the variable to whatever the object is.You can then use this variable to act on the object further.
+
+expr match {
+case 0 => "zero"
+case somethingElse => "not zero: "+ somethingElse
+}
+
+Variable or constant ?
+----------------------
+
+Constant patterns can have symbolic names. You saw this already when we used Nil as a pattern. Here is a related example,
+
+scala> import math.{E, Pi}
+import math.{E, Pi}
+
+scala> E match {
+case Pi => "strange math? Pi = "+ Pi
+case _ => "OK"
+}
+res11: java.lang.String = OK
+
+How does the Scala compiler know that Pi is a constant imported from scala.math, and not a variable that stands for the selector value itself? Scala uses a simple lexical rule for disambiguation: a simple name starting with a lowercase letter is taken to be a pattern variable; all other references are taken to be constants. To see the difference, create a lowercase alias for pi and try with that:
+
+scala> val pi = math.Pi
+pi: Double = 3.141592653589793
+scala> E match {
+case pi => "strange math? Pi = "+ pi
+}
+res12: java.lang.String = strange math? Pi = 2.718281828459045
+
+
+Here the compiler will not even let you add a default case at all. Since pi is a variable pattern, it will match all inputs, and so no cases following it can be reached:
+
+scala> E match {
+case pi => "strange math? Pi = "+ pi
+case _ => "OK"
+}
+<console>:9: error: unreachable code
+case _ => "OK"
+
+If you need to, you can still use a lowercase name for a pattern constant, using one of two tricks. First, if the constant is a field of some object, you can
+prefix it with a qualifier. For instance, pi is a variable pattern, but this.pi or obj.pi are constants even though they start with lowercase letters. If that
+does not work (because pi is a local variable, say), you can alternatively enclose the variable name in back ticks. For instance, `pi` would again be
+interpreted as a constant, not as a variable:
+
+scala> E match {
+case `pi` => "strange math? Pi = "+ pi
+case _ => "OK"
+}
+res14: java.lang.String = OK
+
+Constructor patterns
+--------------------
+Constructors are where pattern matching becomes really powerful. A constructor pattern looks like “BinOp("+", e, Number(0))”. It consists of a name (BinOp) and then a number of patterns within parentheses: "+", e, and Number(0).
+
+These extra patterns mean that Scala patterns support deep matches. Such patterns not only check the top-level object supplied, but also check the contents of the object against further patterns.
+
+For example, the pattern checks that the top-level object is a BinOp, that its third constructor parameter is a Number, and that the value field of that number is 0. This pattern is one line long yet checks three levels deep.
+
+expr match {
+case BinOp("+", e, Number(0)) => println("a deep match")
+case _ =>
+}
+
+Sequence patterns
+-----------------
+You can match against sequence types like List or Array just like you match against case classes. Use the same syntax, but now you can specify any number of elements within the pattern. For example, Listing 15.8 shows a pattern that checks for a three-element list starting with zero:
+expr match 
+{
+	case List(0, _, _) => println("found it")
+	case _ =>
+}
+
+If you want to match against a sequence without specifying how long it can be, you can specify _* as the last element of the pattern. This funnylooking pattern matches any number of elements within a sequence, including zero elements. Below example that matches any list that starts with zero, regardless of how long the list is.
+
+expr match {
+	case List(0, _*) => println("found it")
+	case _ =>
+}
+
+Tuple patterns
+---------------
+You can match against tuples, too. A pattern like (a, b, c) matches an arbitrary 3-tuple. An example is shown in Listing 15.10:
+
+def tupleDemo(expr: Any) =
+expr match {
+case (a, b, c) => println("matched "+ a + b + c)
+case _ =>
+}
+
+If you load the tupleDemo method shown in Listing 15.10 into the interpreter, and pass to it a tuple with three elements, you’ll see:
+
+scala> tupleDemo(("a ", 3, "tuple"))
+matched a 3tuple
+
+Typed patterns
+--------------
+You can use a typed pattern as a convenient replacement for type tests and type casts. Here are a few examples of using the generalSize method in the Scala interpreter:
+
+def generalSize(x: Any) = x match {
+case s: String => s.length
+case m: Map[_, _] => m.size
+case _ => 1
+}
+
+scala> generalSize("abc")
+res16: Int = 3
+
+scala> generalSize(Map(1 -> 'a', 2 -> 'b'))
+res17: Int = 2
+
+scala> generalSize(math.Pi)
+res18: Int = 1
+
+The generalSize method returns the size or length of objects of various types. Its argument is of type Any, so it could be any value. If the argument is a String, the method returns the string’s length. The pattern “s: String” is a typed pattern; it matches every (non-null) instance of String. The pattern variable s then refers to that string.
+
+An equivalent but more long-winded way that achieves the effect of a match against a typed pattern employs a type test followed by a type cast.
+
+To test whether an expression expr has type String, say, you write:
+
+expr.isInstanceOf[String]
+
+To cast the same expression to type String, you use:
+
+expr.asInstanceOf[String]
+
+if (x.isInstanceOf[String]) {
+val s = x.asInstanceOf[String]
+s.length
+} else ...
+
+Type erasure
+------------
+
+Can you also test for a map with specific element types? This would be handy, say for testing whether a given value is a map from type Int to type Int. Let’s try:
+scala> def isIntIntMap(x: Any) = x match {
+case m: Map[Int, Int] => true
+case _ => false
+}
+warning: there were unchecked warnings; rerun
+with
+unchecked
+for details
+isIntIntMap: (x: Any)Boolean
+
+Scala uses the erasure model of generics, just like Java does. This means that no information about type arguments is maintained at runtime. Consequently,
+there is no way to determine at runtime whether a given Map object has been created with two Int arguments, rather than with arguments of different types.
+
+scala> isIntIntMap(Map(1 -> 1))
+res19: Boolean = true
+scala> isIntIntMap(Map("abc" -> "abc"))
+res20: Boolean = true
+
+The first application returns true, which looks correct, but the second application also returns true, which might be a surprise. To alert you to the
+possibly non-intuitive runtime behavior, the compiler emits unchecked warnings like the one shown above.
+
+The only exception to the erasure rule is arrays, because they are handled specially in Java as well as in Scala. The element type of an array is stored
+with the array value, so you can pattern match on it. Here’s an example:
+
+scala> def isStringArray(x: Any) = x match {
+case a: Array[String] => "yes"
+case _ => "no"
+}
+
+isStringArray: (x: Any)java.lang.String
+
+scala> val as = Array("abc")
+as: Array[java.lang.String] = Array(abc)
+
+scala> isStringArray(as)
+res21: java.lang.String = yes
+
+scala> val ai = Array(1, 2, 3)
+ai: Array[Int] = Array(1, 2, 3)
+
+scala> isStringArray(ai)
+res22: java.lang.String = no
+
+Variable binding
+----------------
+Please check in PDF, its simple chapter
+
+15.3 Pattern guards
+-------------------
+A pattern guard comes after a pattern and starts with an if. The guard can be an arbitrary boolean expression, which typically refers to variables
+in the pattern. If a pattern guard is present, the match succeeds only if the guard evaluates to true. Hence, the first case above would only match binary
+operations with two equal operands.
+
+Some other examples of guarded patterns are:
+
+// match only positive integers
+case n: Int if 0 < n => ...
+
+// match only strings starting with the letter ‘a’
+case s: String if s(0) == 'a' => ...
+
+15.4 Pattern overlaps
+---------------------
+For example, here’s a match expression that won’t compile because the first case will match anything that would be matched by the second case:
+
+scala> def simplifyBad(expr: Expr): Expr = expr match 
+{
+case UnOp(op, e) => UnOp(op, simplifyBad(e))
+case UnOp("",UnOp("",e)) => e
+}
+<console>:18: error: unreachable code case UnOp("",UnOp("",e)) => e
+
+15.5 Sealed classes
+-------------------
+Whenever you write a pattern match, you need to make sure you have covered all of the possible cases. Sometimes you can do this by adding a default
+case at the end of the match, but that only applies if there is a sensible default behavior. What do you do if there is no default? How can you ever feel safe
+that you covered all the cases?
+
+In fact, you can enlist the help of the Scala compiler in detecting missing combinations of patterns in a match expression. To be able to do this, the
+compiler needs to be able to tell which are the possible cases. In general, this is impossible in Scala, because new case classes can be defined at any
+time and in arbitrary compilation units. For instance, nothing would prevent you from adding a fifth case class to the Expr class hierarchy in a different
+compilation unit from the one where the other four cases are defined.
+
+The alternative is to make the superclass of your case classes sealed. A sealed class cannot have any new subclasses added except the ones in the
+same file. This is very useful for pattern matching, because it means you only need to worry about the subclasses you already know about. What’s more,
+you get better compiler support as well. If you match against case classes that inherit from a sealed class, the compiler will flag missing combinations
+of patterns with a warning message.
+
+sealed abstract class Expr
+case class Var(name: String) extends Expr
+case class Number(num: Double) extends Expr
+case class UnOp(operator: String, arg: Expr) extends Expr
+case class BinOp(operator: String, left: Expr, right: Expr) extends Expr
+
+Now define a pattern match where some of the possible cases are left out:
+def describe(e: Expr): String = e match {
+case Number(_) => "a number"
+case Var(_) => "a variable"
+}
+
+You will get a compiler warning like the following:
+warning: match is not exhaustive!
+missing combination UnOp
+missing combination BinOp
+
+To make the warning go away, you could add a third catch-all case to the method, like this:
+
+def describe(e: Expr): String = e match {
+case Number(_) => "a number"
+case Var(_) => "a variable"
+case _ => throw new RuntimeException // Should not happen
+}
+
+That works, but it is not ideal. You will probably not be very happy that you were forced to add code that will never be executed (or so you think), just to
+make the compiler shut up.
+
+A more lightweight alternative is to add an @unchecked annotation to the selector expression of the match. This is done as follows:
+def describe(e: Expr): String = (e: @unchecked) match {
+case Number(_) => "a number"
+case Var(_) => "a variable"
+}
+
+15.7 Patterns everywhere
+------------------------
+
+Patterns in variable definitions
+--------------------------------
+Any time you define a val or a var, you can use a pattern instead of a simple identifier. For example, you can use this to take apart a tuple and assign each
+of its parts to its own variable.
+
+scala> val myTuple = (123, "abc")
+myTuple: (Int, java.lang.String) = (123,abc)
+
+scala> val (number, string) = myTuple
+number: Int = 123
+string: java.lang.String = abc
+
+This construct is quite useful when working with case classes. If you know the precise case class you are working with, then you can deconstruct it with a pattern. Here’s an example:
+scala> val exp = new BinOp("*", Number(5), Number(1))
+exp: BinOp = BinOp(*,Number(5.0),Number(1.0))
+
+scala> val BinOp(op, left, right) = exp
+op: String = *
+left: Expr = Number(5.0)
+right: Expr = Number(1.0)
+
+Case sequences as partial functions
+-----------------------------------
+A sequence of cases (i.e., alternatives) in curly braces can be used anywhere a function literal can be used. Essentially, a case sequence is a function literal, only more general.
+
+Instead of having a single entry point and list of parameters, a case sequence has multiple entry points, each with their own list of parameters.
+
+Here is a simple example:
+val withDefault: Option[Int] => Int = {
+case Some(x) => x
+case None => 0
+}
+
+The body of this function has two cases. The first case matches a Some, and returns the number inside the Some. The second case matches a None, and
+returns a default value of zero. Here is this function in use:
+
+scala> withDefault(Some(10))
+res28: Int = 10
+
+scala> withDefault(None)
+res29: Int = 0
+
+One other generalization is worth noting: a sequence of cases gives you a partial function. If you apply such a function on a value it does not support,
+it will generate a run-time exception. For example, here is a partial function that returns the second element of a list of integers:
+
+val second: List[Int] => Int = {
+case x :: y :: _ => y
+}
+
+When you compile this, the compiler will correctly complain that the match is not exhaustive:
+<console>:17: warning: match is not exhaustive! missing combination Nil
+
+This function will succeed if you pass it a three-element list, but not if you pass it an empty list:
+scala> second(List(5, 6, 7))
+res24: Int = 6
+
+scala> second(List())
+scala.MatchError: List()
+at $anonfun$1.apply(<console>:17)
+at $anonfun$1.apply(<console>:17)
+
+The type that only includes partial functions from lists of integers to integers is written PartialFunction[List[Int],Int]. Here is the second function again,
+this time written with a partial function type:
+val second: PartialFunction[List[Int],Int] = {
+case x :: y :: _ => y
+}
+
+Partial functions have a method isDefinedAt, which can be used to test whether the function is defined at a particular value. In this case, the function
+is defined for any list that has at least two elements:
+scala> second.isDefinedAt(List(5,6,7))
+res30: Boolean = true
+
+scala> second.isDefinedAt(List())
+res31: Boolean = false
+
+My Findings - When ever there is a partial function defined, automatically apply and isDefinedAt method will be created automatically by the compiler like below
+
+new PartialFunction[List[Int], Int] {
+def apply(xs: List[Int]) = xs match {
+case x :: y :: _ => y
+}
+def isDefinedAt(xs: List[Int]) = xs match {
+case x :: y :: _ => true
+case _ => false
+}
+}
+
+Patterns in for expressions
+---------------------------
+You can also use a pattern in a for expression, as shown below. This for expression retrieves all key/value pairs from the capitals map. Each pair is matched against the pattern (country, city), which defines the two variables country and city.
+
+scala> for ((country, city) <- capitals)
+	println("The capital of "+ country +" is "+ city)
+
+The capital of France is Paris
+The capital of Japan is Tokyo
+
+The pair pattern shown above was special because the match against it can never fail. Indeed, capitals yields a sequence of pairs, so you can be sure that every generated pair can be matched against a pair pattern. But it is equally possible that a pattern might not match a generated value. Below shows an example where that is the case:
+
+scala> val results = List(Some("apple"), None,Some("orange"))
+results: List[Option[java.lang.String]] = List(Some(apple),None, Some(orange))
+
+scala> for (Some(fruit) <- results)
+	println(fruit)
+apple
+orange
+
+As you can see from this example, generated values that do not match the pattern are discarded. For instance, the second element None in the results list does not match the pattern Some(fruit); therefore it does not show up in the output.

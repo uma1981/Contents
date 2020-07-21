@@ -1,0 +1,511 @@
+HiveQL: Queries
+----------------
+
+SELECT … FROM Clauses
+---------------------
+
+The following two queries are identical. The second version uses a table alias e, which is not very useful in this query, but becomes necessary in queries with JOINs (see “JOIN Statements” on page 98) where several different tables are used:
+
+hive> SELECT name, salary FROM employees;
+hive> SELECT e.name, e.salary FROM employees e;
+
+When you select columns that are one of the collection types, Hive uses JSON (Java-Script Object Notation) syntax for the output. First, let’s select the subordinates, an ARRAY, where a comma-separated list surrounded with […] is used. Note that STRING elements of the collection are quoted, while the primitive STRING name column is not:
+
+hive> SELECT name, subordinates FROM employees;
+John Doe ["Mary Smith","Todd Jones"]
+Mary Smith ["Bill King"]
+Todd Jones []
+Bill King []
+
+The deductions is a MAP, where the JSON representation for maps is used, namely a comma-separated list of key:value pairs, surrounded with {...}:
+
+hive> SELECT name, deductions FROM employees;
+John Doe {"Federal Taxes":0.2,"State Taxes":0.05,"Insurance":0.1}
+Mary Smith {"Federal Taxes":0.2,"State Taxes":0.05,"Insurance":0.1}
+Todd Jones {"Federal Taxes":0.15,"State Taxes":0.03,"Insurance":0.1}
+Bill King {"Federal Taxes":0.15,"State Taxes":0.03,"Insurance":0.1}
+
+Finally, the address is a STRUCT, which is also written using the JSON map format:
+
+hive> SELECT name, address FROM employees;
+John Doe {"street":"1 Michigan Ave.","city":"Chicago","state":"IL","zip":60600}
+Mary Smith {"street":"100 Ontario St.","city":"Chicago","state":"IL","zip":60601}
+Todd Jones {"street":"200 Chicago Ave.","city":"Oak Park","state":"IL","zip":60700}
+Bill King {"street":"300 Obscure Dr.","city":"Obscuria","state":"IL","zip":60100}
+
+First, ARRAY indexing is 0-based, as in Java. Here is a query that selects the first element of the subordinates array:
+
+hive> SELECT name, subordinates[0] FROM employees;
+John Doe Mary Smith
+Mary Smith Bill King
+Todd Jones NULL
+Bill King NULL
+
+To reference a MAP element, you also use ARRAY[...] syntax, but with key values instead of integer indices:
+
+hive> SELECT name, deductions["State Taxes"] FROM employees;
+John Doe 0.05
+Mary Smith 0.05
+
+Finally, to reference an element in a STRUCT, you use “dot” notation, similar to the table_alias.column mentioned above:
+
+hive> SELECT name, address.city FROM employees;
+John Doe Chicago
+Mary Smith Chicago
+
+Specify Columns with Regular Expressions
+----------------------------------------
+
+We can even use regular expressions to select the columns we want. The following query selects the symbol column and all columns from stocks whose names start with the
+prefix price:1
+
+hive> SELECT symbol, `price.*` FROM stocks;
+
+Computing with Column Values
+----------------------------
+Not only can you select columns in a table, but you can manipulate column values using function calls and arithmetic expressions.
+
+The following query is long enough that we’ll split it over two lines. Note the secondary prompt that Hive uses, an indented greater-than sign (>):
+hive> SELECT upper(name), salary, deductions["Federal Taxes"],
+> round(salary * (1 - deductions["Federal Taxes"])) FROM employees;
+
+Arithmetic Operators
+--------------------
+Table 6-1. Arithmetic operators
+
+Operator
+--------
+A + B,A - B,A * B,A / B,A % B ... etc
+
+Arithmetic operators take any numeric type. No type coercion is performed if the two operands are of the same numeric type. Otherwise, if the types differ, then the value of the smaller of the two types is promoted to wider type of the other value. (Wider in the sense that a type with more bytes can hold a wider range of values.) 
+For example, for INT and BIGINT operands, the INT is promoted to BIGINT. For INT and FLOAT operands, the INT is promoted to FLOAT. Note that our query contained (1 - deductions[…]). Since the deductions are FLOATS, the 1 was promoted to FLOAT.
+
+You can also convert values to wider types in specific expressions, called casting
+
+Finally, it is sometimes useful to scale data values, such as dividing by powers of 10, using log values, and so on. Scaling can also improve the accuracy and numerical stability of algorithms used in certain machine learning calculations
+
+Using Functions
+---------------
+
+Mathematical functions
+----------------------
+
+Aggregate functions
+-------------------
+A special kind of function is the aggregate function that returns a single value resulting from some computation over many rows.
+
+Here is a query that counts the number of our example employees and averages their salaries:
+
+hive> SELECT count(*), avg(salary) FROM employees;
+
+Agg functions are, count, sum,min,max,variance,corr,percentile,percentile_approx
+
+You can usually improve the performance of aggregation by setting the following property to true, hive.map.aggr, as shown here:
+
+hive> SET hive.map.aggr=true;
+
+hive> SELECT count(*), avg(salary) FROM employees;
+
+This setting will attempt to do “top-level” aggregation in the map phase, as in this example. (An aggregation that isn’t top-level would be aggregation after performing a GROUP BY.) However, this setting will require more memory.
+
+Table generating functions
+--------------------------
+The “inverse” of aggregate functions are so-called table generating functions, which take single columns and expand them to multiple columns or rows.
+
+Following query converts the subordinate array in each employees record into zero or more new records. If an employee record has an empty subordinates array, then no new records are generated. Otherwise, one new record per subordinate is generated:
+
+hive> SELECT explode(subordinates) AS sub FROM employees;
+Mary Smith
+Todd Jones
+Bill King
+
+We used a column alias, sub, defined using the AS sub clause. When using table generating functions, column aliases are required by Hive.
+
+Please see the table only for other table functions
+
+Other built-in functions
+------------------------
+
+Please see the table only for other built-in functions
+
+LIMIT Clause
+--------------
+
+The results of a typical query can return a large number of rows. The LIMIT clause puts an upper limit on the number of rows returned:
+
+hive> SELECT upper(name), salary, deductions["Federal Taxes"],
+> round(salary * (1 - deductions["Federal Taxes"])) FROM employees
+> LIMIT 2;
+
+JOHN DOE 100000.0 0.2 80000
+MARY SMITH 80000.0 0.2 64000
+
+Column Aliases
+--------------
+Here is the previous query with column aliases for the third and fourth columns returned by the query, fed_taxes and salary_minus_fed_taxes, respectively:
+
+hive> SELECT upper(name), salary, deductions["Federal Taxes"] as fed_taxes,
+> round(salary * (1 - deductions["Federal Taxes"])) as salary_minus_fed_taxes
+> FROM employees LIMIT 2;
+
+JOHN DOE 100000.0 0.2 80000
+MARY SMITH 80000.0 0.2 64000
+
+Nested SELECT Statements
+-------------------------
+The column alias feature is especially useful in nested select statements. Let’s use the previous example as a nested query:
+hive> FROM (
+> SELECT upper(name), salary, deductions["Federal Taxes"] as fed_taxes,
+> round(salary * (1 - deductions["Federal Taxes"])) as salary_minus_fed_taxes
+> FROM employees
+> ) e
+> SELECT e.name, e.salary_minus_fed_taxes
+> WHERE e.salary_minus_fed_taxes > 70000;
+
+CASE … WHEN … THEN Statements
+-----------------------------
+hive> SELECT name, salary,
+> CASE
+> WHEN salary < 50000.0 THEN 'low'
+> WHEN salary >= 50000.0 AND salary < 70000.0 THEN 'middle'
+> WHEN salary >= 70000.0 AND salary < 100000.0 THEN 'high'
+> ELSE 'very high'
+> END AS bracket FROM employees;
+
+When Hive Can Avoid MapReduce
+-----------------------------
+If you have been running the queries in this book so far, you have probably noticed that a MapReduce job is started in most cases. Hive implements some kinds of queries without using MapReduce, in so-called local mode, for example:
+
+SELECT * FROM employees;
+
+In this case, Hive can simply read the records from employees and dump the formatted output to the console.
+
+This even works for WHERE clauses that only filter on partition keys, with or without LIMIT clauses:
+
+SELECT * FROM employees
+WHERE country = 'US' AND state = 'CA'
+LIMIT 100;
+
+Furthermore, Hive will attempt to run other operations in local mode if the 
+hive.exec.mode.local.auto property is set to true:
+set hive.exec.mode.local.auto=true;
+
+Otherwise, Hive uses MapReduce to run all other queries.
+
+WHERE Clauses
+-------------
+
+SELECT * FROM employees
+WHERE country = 'US' AND state = 'CA';
+
+Filtering for those rows where the salary minus the federal taxes is greater than 70,000
+
+hive> SELECT name, salary, deductions["Federal Taxes"],
+> salary * (1 - deductions["Federal Taxes"])
+> FROM employees
+> WHERE round(salary * (1 - deductions["Federal Taxes"])) > 70000;
+
+we can use a nested SELECT statement:
+
+hive> SELECT e.* FROM
+> (SELECT name, salary, deductions["Federal Taxes"] as ded,
+> salary * (1 - deductions["Federal Taxes"]) as salary_minus_fed_taxes
+> FROM employees) e
+> WHERE round(e.salary_minus_fed_taxes) > 70000;
+
+John Doe 100000.0 0.2 80000.0
+
+Predicate Operators
+-------------------
+Please see the table only for predicate operators
+
+A=B, A!=B, A > B , A < B, A is Null, A is not null.
+
+Gotchas with Floating-Point Comparisons
+---------------------------------------
+
+Consider the following query of the employees table, which is designed to return the employee’s name, salary, and federal taxes deduction, but only if that tax deduction exceeds 0.2 (20%) of his or her salary:
+
+hive> SELECT name, salary, deductions['Federal Taxes']
+> FROM employees WHERE deductions['Federal Taxes'] > 0.2;
+
+John Doe 100000.0 0.2
+Mary Smith 80000.0 0.2
+
+Wait! Why are records with deductions['Federal Taxes'] = 0.2 being returned? Is it a Hive bug? There is a bug filed against Hive for this issue.
+
+When you write a floating-point literal value like 0.2, Hive uses a DOUBLE to hold the value. We defined the deductions map values to be FLOAT, which means that Hive will implicitly convert the tax deduction value to DOUBLE to do the comparison
+
+This issue is not unique to Hive nor Java, in which Hive is implemented. Rather, it’s a general problem for all systems that use the IEEE standard for encoding floating-point numbers!
+
+However, there are two workarounds we can use in Hive.
+
+Hive reads the string “0.2” from the data file and converts it to a real number. We could use DOUBLE instead of FLOAT in our schema.
+
+The second workaround is to explicitly cast the 0.2 literal value to FLOAT
+
+hive> SELECT name, salary, deductions['Federal Taxes'] FROM employees
+> WHERE deductions['Federal Taxes'] > cast(0.2 AS FLOAT);
+
+LIKE and RLIKE
+--------------
+LIKE and RLIKE predicate operators
+
+select the employee names and addresses where the street ends with Ave.
+
+hive> SELECT name, address.street FROM employees WHERE address.street LIKE '%Ave.';
+
+John Doe 1 Michigan Ave.
+Todd Jones 200 Chicago Ave.
+
+select the employee names and addresses where the city begins with O
+
+hive> SELECT name, address.city FROM employees WHERE address.city LIKE 'O%';
+Todd Jones Oak Park
+Bill King Obscuria
+
+select the employee names and addresses where the street contains Chicago:
+
+hive> SELECT name, address.street FROM employees WHERE address.street LIKE '%Chi%';
+Todd Jones 200 Chicago Ave.
+
+A Hive extension is the RLIKE clause, which lets us use Java regular expressions, a more powerful minilanguage for specifying matches
+
+Here, we demonstrate their use with an example, which finds all the employees whose street contains the word Chicago or Ontario:
+
+hive> SELECT name, address.street
+> FROM employees WHERE address.street RLIKE '.*(Chicago|Ontario).*';
+
+Mary Smith 100 Ontario St.
+Todd Jones 200 Chicago Ave.
+
+The string after the RLIKE keyword has the following interpretation. A period (.) matches any character and a star (*) means repeat the “thing to the left” (period, in the two cases shown) zero to many times. The expression (x|y) means match either x or y.
+
+Of course, we could have written this particular example with two LIKE clauses:
+
+SELECT name, address FROM employees
+WHERE address.street LIKE '%Chicago%' OR address.street LIKE '%Ontario%';
+
+GROUP BY Clauses
+----------------
+The GROUP BY statement is often used in conjunction with aggregate functions to group the result set by one or more columns and then perform an aggregation over each group.
+
+hive> SELECT year(ymd), avg(price_close) FROM stocks
+> WHERE exchange = 'NASDAQ' AND symbol = 'AAPL'
+> GROUP BY year(ymd)
+
+HAVING Clauses
+--------------
+The HAVING clause lets you constrain the groups produced by GROUP BY in a way that could be expressed with a subquery,using a syntax that’s easier to express.
+
+hive> SELECT year(ymd), avg(price_close) FROM stocks
+> WHERE exchange = 'NASDAQ' AND symbol = 'AAPL'
+> GROUP BY year(ymd)
+> HAVING avg(price_close) > 50.0;
+
+Without the HAVING clause, this query would require a nested SELECT statement:
+hive> SELECT s2.year, s2.avg FROM
+> (SELECT year(ymd) AS year, avg(price_close) AS avg FROM stocks
+> WHERE exchange = 'NASDAQ' AND symbol = 'AAPL'
+> GROUP BY year(ymd)) s2
+> WHERE s2.avg > 50.0;
+
+JOIN Statements
+---------------
+Hive supports the classic SQL JOIN statement, but only equi-joins are supported.
+
+Inner JOIN
+----------
+In an inner JOIN, records are discarded unless join criteria finds matching records in every table being joined.
+
+hive> SELECT a.ymd, a.price_close, b.price_close
+> FROM stocks a JOIN stocks b ON a.ymd = b.ymd
+> WHERE a.symbol = 'AAPL' AND b.symbol = 'IBM';
+
+Query that will not work in Hive
+--------------------------------
+SELECT a.ymd, a.price_close, b.price_close
+FROM stocks a JOIN stocks b
+ON a.ymd <= b.ymd
+WHERE a.symbol = 'AAPL' AND b.symbol = 'IBM';
+
+This is not valid in Hive, primarily because it is difficult to implement these kinds of joins in MapReduce.
+
+Also, Hive does not currently support using OR between predicates in ON clauses.
+
+You can join more than two tables together. Let’s compare Apple, IBM, and GE side by side:
+
+hive> SELECT a.ymd, a.price_close, b.price_close , c.price_close
+> FROM stocks a JOIN stocks b ON a.ymd = b.ymd
+> JOIN stocks c ON a.ymd = c.ymd
+> WHERE a.symbol = 'AAPL' AND b.symbol = 'IBM' AND c.symbol = 'GE';
+
+Most of the time, Hive will use a separate MapReduce job for each pair of things to join. In this example, it would use one job for tables a and b, then a second job to join the output of the first join with c.
+
+Why not join b and c first? Hive goes from left to right. However, this example actually benefits from an optimization we’ll discuss next.y
+
+Join Optimizations
+------------------
+
+In the previous example, every ON clause uses a.ymd as one of the join keys. In this case, Hive can apply an optimization where it joins all three tables in a single MapReduce job. The optimization would also be used if b.ymd were used in both ON clauses.
+
+When joining three or more tables, if every ON clause uses the same join key, a single MapReduce job will be used.
+
+Hive also assumes that the last table in the query is the largest. It attempts to buffer the other tables and then stream the last table through, while performing joins on individual records. Therefore, you should structure your join queries so the largest table is last.
+
+Recall our previous join between stocks and dividends. We actually made the mistake of using the smaller dividends table last:
+
+''
+SELECT s.ymd, s.symbol, s.price_close, d.dividend
+FROM stocks s JOIN dividends d ON s.ymd = d.ymd AND s.symbol = d.symbol
+WHERE s.symbol = 'AAPL';
+
+We should switch the positions of stocks and dividends:
+
+SELECT s.ymd, s.symbol, s.price_close, d.dividend 
+FROM dividends d JOIN stocks s ON s.ymd = d.ymd AND s.symbol = d.symbol 
+WHERE s.symbol = 'AAPL';
+
+Fortunately, you don’t have to put the largest table last in the query. Hive also provides a “hint” mechanism to tell the query optimizer which table should be streamed:
+
+SELECT /*+ STREAMTABLE(s) */ s.ymd, s.symbol, s.price_close, d.dividend
+FROM stocks s JOIN dividends d ON s.ymd = d.ymd AND s.symbol = d.symbol
+WHERE s.symbol = 'AAPL';
+
+Now Hive will attempt to stream the stocks table, even though it’s not the last table in the query.
+
+LEFT OUTER JOIN
+---------------
+The left-outer join is indicated by adding the LEFT OUTER keywords:
+
+hive> SELECT s.ymd, s.symbol, s.price_close, d.dividend
+> FROM stocks s LEFT OUTER JOIN dividends d ON s.ymd = d.ymd AND s.symbol = d.symbol
+> WHERE s.symbol = 'AAPL';
+
+In this join, all the records from the lefthand table that match the WHERE clause are returned. If the righthand table doesn’t have a record that matches the ON criteria, NULL is used for each column selected from the righthand table.
+
+Please read page 102 completely.
+
+RIGHT OUTER JOIN
+------------
+Right-outer joins return all records in the righthand table that match the WHERE clause.NULL is used for fields of missing records in the lefthand table.
+
+Here we switch the places of stocks and dividends and perform a righthand join, but leave the SELECT statement unchanged:
+
+hive> SELECT s.ymd, s.symbol, s.price_close, d.dividend
+> FROM dividends d RIGHT OUTER JOIN stocks s ON d.ymd = s.ymd AND d.symbol = s.symbol
+> WHERE s.symbol = 'AAPL';
+
+FULL OUTER JOIN
+---------------
+Finally, a full-outer join returns all records from all tables that match the WHERE clause.NULL is used for fields in missing records in either table.
+
+If we convert the previous query to a full-outer join, we’ll actually get the same results,since there is never a case where a dividend record exists without a matching stock record:
+
+hive> SELECT s.ymd, s.symbol, s.price_close, d.dividend
+> FROM dividends d FULL OUTER JOIN stocks s ON d.ymd = s.ymd AND d.symbol = s.symbol
+> WHERE s.symbol = 'AAPL';
+
+LEFT SEMI-JOIN,Cartesian Product JOINs,Map-side Joins
+-----------------------------------------------------
+PLEASE GO THOUGH THIS TOPIC IN PDF
+
+ORDER BY and SORT BY
+--------------------
+The ORDER BY clause is familiar from other SQL dialects. It performs a total ordering of the query result set. This means that all the data is passed through a single reducer,which may take an unacceptably long time to execute for larger data sets.
+
+Hive adds an alternative, SORT BY, that orders the data only within each reducer, thereby performing a local ordering, where each reducer’s output will be sorted. Better performance is traded for total ordering.
+
+In both cases, the syntax differs only by the use of the ORDER or SORT keyword. Asceding by default.
+
+Here is an example using ORDER BY:
+
+SELECT s.ymd, s.symbol, s.price_close
+FROM stocks s
+ORDER BY s.ymd ASC, s.symbol DESC;
+
+Here is the same example using SORT BY instead:
+
+SELECT s.ymd, s.symbol, s.price_close
+FROM stocks s
+SORT BY s.ymd ASC, s.symbol DESC;
+
+The two queries look almost identical, but if more than one reducer is invoked, the output will be sorted differently. While each reducer’s output files will be sorted, the data will probably overlap with the output of other reducers.
+
+DISTRIBUTE BY with SORT BY
+--------------------------
+DISTRIBUTE BY controls how map output is divided among reducers. All data that flows through a MapReduce job is organized into key-value pairs. Hive must use this feature internally when it converts your queries to MapReduce jobs.
+
+Unfortunately, this means that when we use SORT BY, the contents of one reducer’s output will overlap significantly with the output of the other reducers
+
+Say we want the data for each stock symbol to be captured together. We can use DISTRIBUTE BY to ensure that the records for each stock symbol go to the same reducer,then use SORT BY to order the data the way we want. The following query demonstrates this technique:
+
+hive> SELECT s.ymd, s.symbol, s.price_close
+> FROM stocks s
+> DISTRIBUTE BY s.symbol
+> SORT BY s.symbol ASC, s.ymd ASC;
+
+DISTRIBUTE BY works similar to GROUP BY in the sense that it controls how reducers receive rows for processing, while SORT BY controls the sorting of data inside the reducer. 
+
+Note that Hive requires that the DISTRIBUTE BY clause come before the SORT BY clause.
+
+CLUSTER BY
+-----------
+In the previous example, the s.symbol column was used in the DISTRIBUTE BY clause,and the s.symbol and the s.ymd columns in the SORT BY clause. Suppose that the same columns are used in both clauses and all columns are sorted by ascending order (the default). In this case, the CLUSTER BY clause is a shor-hand way of expressing the same query.
+
+For example, let’s modify the previous query to drop sorting by s.ymd and use CLUSTER BY on s.symbol:
+
+hive> SELECT s.ymd, s.symbol, s.price_close
+> FROM stocks s
+> CLUSTER BY s.symbol;
+
+Using DISTRIBUTE BY ... SORT BY or the shorthand CLUSTER BY clauses is a way to exploit the parallelism of SORT BY, yet achieve a total ordering across the output files.
+
+Casting
+-------
+Hive will perform some implicit conversions, called casts, of numeric data types, as needed
+
+Here we discuss the cast() function that allows you to explicitly convert a value of one type to another.
+
+Recall our employees table uses a FLOAT for the salary column. Now, imagine for a moment that STRING was used for that column instead. How could we work with the values as FLOATS?
+
+The following example casts the values to FLOAT before performing a comparison:
+
+SELECT name, salary FROM employees
+WHERE cast(salary AS FLOAT) < 100000.0;
+
+What would happen in theexample if a salary value was not a valid string for a floating-point number? In this case, Hive returns NULL.
+
+Note that the preferred way to convert floating-point numbers to integers is to use the round() or floor() functions listed in Table 6-2, rather than to use the cast operator.
+
+Casting BINARY Values
+---------------------
+The new BINARY type introduced in Hive v0.8.0 only supports casting BINARY to STRING. However, if you know the value is a number, you can nest cast() invocations,as in this example where column b is a BINARY column:
+
+SELECT (2.0*cast(cast(b as string) as double)) from src;
+
+You can also cast STRING to BINARY.
+
+Queries that Sample Data
+------------------------
+
+Please read this topic completely in PDF.
+
+
+UNION ALL
+---------
+UNION ALL combines two or more tables. Each subquery of the union query must produce the same number of columns, and for each column, its type must match all the column types in the same position. For example, if the second column is a FLOAT, then the second column of all the other query results must be a FLOAT.
+
+Here is an example the merges log data:
+
+SELECT log.ymd, log.level, log.message
+FROM (
+	SELECT l1.ymd, l1.level,
+	l1.message, 'Log1' AS source
+	FROM log1 l1s
+	UNION ALL
+	SELECT l2.ymd, l2.level,
+	l2.message, 'Log2' AS source
+	FROM log1 l2
+) log
+SORT BY log.ymd ASC;

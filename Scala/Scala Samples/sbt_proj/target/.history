@@ -1,0 +1,7 @@
+println("hi")
+println("hi");
+scala
+cd scala
+sbt console
+quit
+exit

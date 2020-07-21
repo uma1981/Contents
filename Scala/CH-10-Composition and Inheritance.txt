@@ -1,0 +1,234 @@
+10.2 Abstract classes
+---------------------
+In this class, contents is declared as a method that has no implementation. In other words, the method is an abstract member of class Element. A class with abstract members must itself be declared abstract, which is done by writing an abstract modifier in front of the class keyword.
+
+abstract class Element {
+def contents: Array[String]
+}
+
+The abstract modifier signifies that the class may have abstract members that do not have an implementation. As a result, you cannot instantiate an abstract class. If you try to do so, you’ll get a compiler error: 
+
+scala> new Element
+
+<console>:5: error: class Element is abstract; cannot be instantiated new Element.
+
+Note that the contents method in class Element does not carry an abstract modifier. A method is abstract if it does not have an implementation (i.e., no equals sign or body). Unlike Java, no abstract modifier is necessary (or allowed) on method declarations. Methods that do have an implementation are called concrete
+
+10.3 Defining parameterless methods
+-----------------------------------
+abstract class Element {
+
+def contents: Array[String]
+def height: Int = contents.length
+def width: Int = if (height == 0) 0 else contents(0).length
+
+}
+
+Note that none of Element’s three methods has a parameter list, not even an empty one. For example, instead of:
+def width(): Int
+
+the method is defined without parentheses:
+
+def width: Int
+
+Such parameterless methods are quite common in Scala. By contrast, methods defined with empty parentheses, such as def height(): Int, are called empty-paren methods.
+ 
+For instance, we could have chosen to implement width and height as fields instead of methods, simply by changing the def in each definition to a val:
+
+abstract class Element {
+def contents: Array[String]
+val height = contents.length
+val width =
+if (height == 0) 0 else contents(0).length
+}
+
+The two pairs of definitions are completely equivalent from a client’s point of view. The only difference is that field accesses might be slightly faster than method invocations, because the field values are pre-computed when the class is initialized, instead of being computed on each method call.
+
+On the other hand, the fields require extra memory space in each Element object.
+
+Scala is very liberal when it comes to mixing parameterless and empty-paren methods. In particular, you can override a parameterless method with an empty-paren method, and vice versa. You can also leave off the empty parentheses on an invocation of any function that takes no arguments. For instance, the following two lines are both legal in Scala:
+
+Array(1, 2, 3).toString
+
+"abc".length
+
+In principle it’s possible to leave out all empty parentheses in Scala function calls. However, it is recommended to still write the empty parentheses when the invoked method represents more than a property of its receiver object.
+
+For instance, empty parentheses are appropriate if the method performs I/O,
+
+"hello".length // no () because no sideeffect
+println() // better to not drop the ()
+
+10.4 Extending classes
+----------------------
+We still need to be able to create new element objects. You have already seen that “new Element” cannot be used for this because class Element is abstract. To instantiate an element, therefore, we will need to create a subclass that extends Element and implements the abstract contents method.
+
+class ArrayElement(conts: Array[String]) extends Element {
+def contents: Array[String] = conts
+}
+
+Such an extends clause has two effects: it makes class ArrayElement inherit all non-private members from class Element, and it makes the type ArrayElement a subtype of the type Element. Given ArrayElement extends Element, class ArrayElement is called a subclass of class Element. Conversely, Element is a superclass of ArrayElement.
+
+If you leave out an extends clause, the Scala compiler implicitly assumes your class extends from scala.AnyRef.Thus, class Element implicitly extends class AnyRef.
+
+Inheritance means that all members of the superclass are also members of the subclass, with two exceptions. First, private members of the superclass are not inherited in a subclass. Second, a member of a superclass is not inherited if a member with the same name and parameters is already implemented in the subclass. In that case we say the member of the subclass overrides the member of the superclass.
+
+If the member in the subclass is concrete and the member of the superclass is abstract, we also say that the concrete member implements the abstract one.
+
+For example, the contents method in ArrayElement overrides (or, alternatively: implements) abstract method contents in class Element. By contrast, class ArrayElement inherits the width and height methods from class Element. For example, given an ArrayElement ae, you can query its width using ae.width, as if width were defined in class ArrayElement
+
+scala> val ae = new ArrayElement(Array("hello", "world"))
+ae: ArrayElement = ArrayElement@d94e60
+
+scala> ae.width
+res1: Int = 5
+
+Subtyping means that a value of the subclass can be used wherever a value of the superclass is required. For example:
+
+val e: Element = new ArrayElement(Array("hello"))
+
+Variable e is defined to be of type Element, so its initializing value should also be an Element. In fact, the initializing value’s type is ArrayElement. This is OK, because class ArrayElement extends class Element, and as a result, the type ArrayElement is compatible with the type Element.
+
+
+10.5 Overriding methods and fields
+----------------------------------
+In Scala, fields and methods belong to the same namespace. This makes it possible for a field to override a parameterless method. 
+For instance, you could change the implementation of contents in class ArrayElement from a method to a field without having to modify the abstract method definition of contents in class Element.
+
+class ArrayElement(conts: Array[String]) extends Element {
+val contents: Array[String] = conts
+}
+
+In Scala it is forbidden to define a field and method with the same name in the same class, whereas it is allowed in Java.
+
+The corresponding Scala class would not compile:
+class WontCompile {
+private var f = 0 // Won’t compile, because a field
+def f = 1 // and method have the same name
+}
+
+Scala’s two namespaces are:
+• values (fields, methods, packages, and singleton objects)
+• types (class and trait names)
+
+The reason Scala places fields and methods into the same namespace is precisely so you can override a parameterless method with a val
+
+10.6 Defining parametric fields
+-------------------------------
+Consider again the definition of class ArrayElement shown in the previous section. It has a parameter conts whose sole purpose is to be copied into the contents field. The name conts of the parameter was chosen just so that it would look similar to the field name contents without actually clashing with it. This is a “code smell,”
+
+You can avoid the code smell by combining the parameter and the field in a single parametric field definition, as shown in 
+
+class ArrayElement(
+val contents: Array[String]
+) extends Element
+
+
+
+
+Note that now the contents parameter is prefixed by val. This is a shorthand that defines at the same time a parameter and field with the same name. Specifically, class ArrayElement now has an (unreassignable) field contents, which can be accessed from outside the class. The field is initialized with the value of the parameter. 
+
+It’s as if the class had been written as follows, where x123 is an arbitrary fresh name for the parameter:
+
+class ArrayElement(x123: Array[String]) extends Element {
+val contents: Array[String] = x123
+}
+
+You can also prefix a class parameter with var, in which case the corresponding field would be reassignable. 
+
+Finally, it is possible to add modifiers such as private, protected,5 or override to these parametric fields, just as you can do for any other class member. Consider, for instance, the following
+class definitions:
+
+class Cat 
+{
+val dangerous = false
+}
+class Tiger(override val dangerous: Boolean,private var age: Int ) extends Cat
+
+
+class Tiger(param1: Boolean, param2: Int) extends Cat 
+{
+override val dangerous = param1
+private var age = param2
+}
+
+Both members are initialized from the corresponding parameters. We chose the names of those parameters, param1 and param2, arbitrarily. The important thing was that they not clash with any other name in scope.
+
+10.7 Invoking superclass constructors
+-------------------------------------
+
+class LineElement(s: String) extends ArrayElement(Array(s)) {
+override def width = s.length
+override def height = 1
+}
+
+Since LineElement extends ArrayElement, and ArrayElement’s constructor takes a parameter (an Array[String]), LineElement needs to pass an argument to the primary constructor of its superclass
+
+10.8 Using override modifiers
+-----------------------------
+Note that the definitions of width and height in LineElement carry an override modifier.
+
+Scala requires such a modifier for all members that override a concrete member in a parent class. The modifier is optional if a member implements an abstract member with the same name. 
+
+The modifier is forbidden if a member does not override or implement some other member in a base class. Since height and width in class LineElement override concrete definitions in class Element, override is required.
+
+10.9 Polymorphism and dynamic binding
+-------------------------------------
+Please see the example in Intelli-J
+
+You saw in Section 10.4 that a variable of type Element could refer to an object of type ArrayElement. The name for this phenomenon is polymorphism, which means “many shapes” or “many forms.”
+
+Scala will accept all of the following assignments, because the assigning expression’s type conforms to the type of the defined variable:
+
+val e1: Element = new ArrayElement(Array("hello", "world"))
+val ae: ArrayElement = new LineElement("hello")
+val e2: Element = ae
+val e3: Element = new UniformElement('x', 2, 3)
+
+If you check the inheritance hierarchy, you’ll find that in each of these four val definitions, the type of the expression to the right of the equals sign is below the type of the val being initialized to the left of the equals sign.
+
+However, is that method invocations on variables and expressions are dynamically bound. This means that the actual method implementation invoked is determined at run time based on the class of the object, not the type of the variable or expression.
+
+10.10 Declaring final members
+-----------------------------
+Sometimes when designing an inheritance hierarchy, you want to ensure that a member cannot be overridden by subclasses. In Scala, as in Java, you do this by adding a final modifier to the member. For example, you could place a final modifier on ArrayElement’s demo method
+
+Given this version of ArrayElement, an attempt to override demo in its subclass, LineElement, would not compile:
+
+class ArrayElement extends Element 
+{
+ final override def demo() 
+ {
+	println("ArrayElement's implementation invoked")
+ }
+}
+
+You may also at times want to ensure that an entire class not be subclassed. To do this you simply declare the entire class final by adding a final modifier to the class declaration.
+
+final class ArrayElement extends Element 
+{
+ override def demo() 
+ {
+ 	println("ArrayElement's implementation invoked")
+ }
+}
+
+10.11 Using composition and inheritance
+---------------------------------------
+Nothing to read in this
+
+10.12 Implementing above, beside, and toString
+-----------------------------------------------
+Not able to understand, have to check one more time.
+
+10.13 Defining a factory object
+-------------------------------
+Have to read
+
+10.14 Heighten and widen
+---------------------------
+Have to read
+
+10.15 Putting it all together
+-----------------------------
+Have to read

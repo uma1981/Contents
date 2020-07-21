@@ -1,0 +1,36 @@
+String* - This is called variable arguments , please see the below example
+
+scala> def concat(strs: String*): String = strs.foldLeft("")(_ ++ _)
+concat: (strs: String*)String
+
+scala> concat()
+res6: String = ""
+
+scala> concat("foo")
+res7: String = foo
+
+scala> concat("foo", " ", "bar")
+res8: String = foo bar
+
+=====================================================================================================================
+Option and Some
+---------------
+
+Let's say we have a method that retrieves a record from the database based on a primary key.
+
+def findPerson(key: Int): Option[Person]
+
+The method will return Some[Person] if the record is found but None if the record is not found.
+
+    An instance of the Scala Some class
+    An instance of the Scala None class
+
+Because Some and None are both children of Option, your function signature just declares that you're returning an Option that contains some type (such as the Int type shown below)
+
+https://alvinalexander.com/scala/using-scala-option-some-none-idiom-function-java-null
+
+====================================================================================================
+Seq, Linear Seq and Indexed Seq
+------------------------------
+
+https://alvinalexander.com/scala/seq-class-methods-examples-syntax

@@ -1,0 +1,111 @@
+Local Mode, Pseudodistributed Mode, and Distributed Mode
+--------------------------------------------------------
+Before we proceed, let’s clarify the different runtime modes for Hadoop. We mentioned above that the default mode is local mode, where filesystem references use the local filesystem. Also in local mode, when Hadoop jobs are executed (including most Hive queries), the Map and Reduce tasks are run as part of the same process.
+
+Actual clusters are configured in distributed mode, where all filesystem references that aren’t full URIs default to the distributed filesystem (usually HDFS) and jobs are managed by the JobTracker service, with individual tasks executed in separate processes.
+
+A dilemma for developers working on personal machines is the fact that local mode doesn’t closely resemble the behavior of a real cluster, which is important to remember when testing applications. To address this need, a single machine can be configured to run in pseudodistributed mode, where the behavior is identical to distributed mode,namely filesystem references default to the distributed filesystem and jobs are managed by the JobTracker service, but there is just a single machine. Hence, for example, HDFS file block replication is limited to one copy.
+
+What Is Inside Hive?
+--------------------
+The core of a Hive binary distribution contains three parts. The main part is the Java code itself. Multiple JAR (Java archive) files such as hive-exec*.jar and hive-meta store*.jar are found under the $HIVE_HOME/lib directory
+
+The $HIVE_HOME/bin directory contains executable scripts that launch various Hive services, including the hive command-line interface (CLI). The CLI is the most popular way to use Hive.
+
+Hive also has other components. A Thrift service provides remote access from other processes. Access using JDBC and ODBC are provided, too. They are implemented on top of the Thrift service.
+
+All Hive installations require a metastore service, which Hive uses to store table schemas and other metadata. It is typically implemented using tables in a relational database. By default, Hive uses a built-in Derby SQL server, which provides limited, singleprocess storage. For example, when using Derby, you can’t run two simultaneous instances of the Hive CLI. However, this is fine for learning Hive on a personal machine and some developer tasks. For clusters, MySQL or a similar relational database is required. We will discuss the details in “Metastore Using JDBC” on page 28.
+
+The conf directory contains the files that configure Hive. Hive has a number of configuration properties that we will discuss as needed. These properties control features such as the metastore (where data is stored), various optimizations, and “safety controls,” etc.
+
+Starting Hive
+-------------
+Let’s finally start the Hive command-line interface (CLI) and run a few commands! We’ll briefly comment on what’s happening, but save the details for discussion later.
+
+In the following session, we’ll use the $HIVE_HOME/bin/hive command, which is a bash shell script, to start the CLI. Substitute the directory where Hive is installed on your system whenever $HIVE_HOME is listed in the following script. Or, if you added $HIVE_HOME/bin to your PATH, you can just type hive to run the command. We’ll make that assumption for the rest of the book.
+
+As before, $ is the bash prompt. In the Hive CLI, the hive > string is the hive prompt, and the indented > is the secondary prompt. Here is a sample session, where we have added a blank line after the output of each command, for clarity:
+
+If you are running with the default Derby database for the metastore, you’ll notice that your current working directory now contains a new subdirectory called metastore_db that was created by Derby during the short hive session you just executed.
+
+Creating a metastore_db subdirectory under whatever working directory you happen to be in is not convenient, as Derby “forgets” about previous metastores when you change to a new working directory! In the next section, we’ll see how to configure a permanent location for the metastore database, as well as make other changes.
+
+Local Mode Configuration
+------------------------
+Recall that in local mode, all references to files go to your local filesystem, not the distributed filesystem. There are no services running. Instead, your jobs run all tasks in a single JVM instance.
+
+First, go to the $HIVE_HOME/conf directory. The curious may want to peek at the large hive-default.xml.template file, which shows the different configuration properties supported by Hive and their default values. Most of these properties you can safely ignore. Changes to your configuration are done by editing the hive-site.xml file. Create one if it doesn’t already exist.
+
+Example 2-1. Local-mode hive-site.xml
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+<property>
+	<name>hive.metastore.warehouse.dir</name>
+	<value>/home/me/hive/warehouse</value>
+	<description>
+	Local or HDFS directory where Hive keeps table contents.
+	</description>
+</property>
+<property>
+	<name>hive.metastore.local</name>
+	<value>true</value>
+	<description>
+	Use false if a production metastore server is used.
+	</description>
+</property>
+<property>
+	<name>javax.jdo.option.ConnectionURL</name>
+	<value>jdbc:derby:;databaseName=/home/me/hive/metastore_db;create=true</value>
+	<description>
+	The JDBC connection URL.
+	</description>
+</property>
+</configuration>
+
+As the <description> tags indicate, the hive.metastore.warehouse.dir tells Hive where in your local filesystem to keep the data contents for Hive’s tables.You can use any directory path you want for the value. Note that this directory will not be used to store the table metadata, which goes in the separate metastore.
+
+The hive.metastore.local property defaults to true.This property controls whether to connect to a remote metastore server or open a new metastore server as part of the Hive Client JVM. This setting is almost always set to true and JDBC is used to communicate directly to a relational database.
+
+The value for the javax.jdo.option.ConnectionURL property makes one small but convenient change to the default value for this property. This property tells Hive how to connect to the metastore server. By default, it uses the current working directory for the databaseName part of the value string. we use database Name=/home/me/hive/metastore_db as the absolute path instead, which is the location where the metastore_db directory will always be located. This change eliminates the problem of Hive dropping the metastore_db directory in the current working directory every time we start a new Hive session. Now, we’ll always have access to all our metadata, no matter what directory we are working in.
+
+Distributed and Pseudodistributed Mode Configuration
+----------------------------------------------------
+In distributed mode, several services run in the cluster. The JobTracker manages jobs and the NameNode is the HDFS master. Worker nodes run individual job tasks, managed by a TaskTracker service on each node, and then hold blocks for files in the distributed filesystem, managed by DataNode services.
+
+Specifying a different value here allows each user to define their own warehouse directory, so they don’t affect other system users. Hence, each user might use the following statement to define their own warehouse directory:
+
+set hive.metastore.warehouse.dir=/user/myname/hive/warehouse;
+
+Its best to put commands like this in the $HOME/.hiverc file, which will be processed when Hive starts. See “The .hiverc File” on page 36 for more details.
+We’ll assume the value is /user/hive/warehouse from here on.
+
+Metastore Using JDBC
+--------------------
+Hive requires only one extra component that Hadoop does not already have; the metastore component. The metastore stores metadata such as table schema and partition
+information that you specify when you run commands such as create table x..., or alter table y..., etc. Because multiple users and systems are likely to need
+concurrent access to the metastore, the default embedded database is not suitable for production.
+
+For our MySQL configuration, we need to know the host and port the service is running on. We will assume db1.mydomain.pvt and port 3306, which is the standard MySQL
+port. Finally, we will assume that hive_db is the name of our catalog
+
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+<property>
+	<name>javax.jdo.option.ConnectionURL</name>
+	<value>jdbc:mysql://db1.mydomain.pvt/hive_db?createDatabaseIfNotExist=true</value>
+</property>
+<property>
+	<name>javax.jdo.option.ConnectionDriverName</name>
+	<value>com.mysql.jdbc.Driver</value>
+</property>
+<property>
+	<name>javax.jdo.option.ConnectionUserName</name>
+	<value>database_user</value>
+</property>
+<property>
+	<name>javax.jdo.option.ConnectionPassword</name>
+	<value>database_pass</value>
+</property>
+</configuration>

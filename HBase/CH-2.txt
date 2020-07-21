@@ -1,0 +1,319 @@
+To accomplish all these goals, you’ll build an application from scratch. Allow us to introduce TwitBase, a simplified clone of the social network Twitter, implemented entirely in HBase. We won’t cover all the features of Twitter
+
+Starting from scratch
+---------------------
+At its core, TwitBase stores three simple data elements: users, twits, and relationships. Users are the center of TwitBase. They log into the application, maintain a profile, and interact with other users by posting twits. Twits are short messages written publicly
+by the users of TwitBase. Twits are the primary mode of interaction between users.
+
+Users have conversations by twitting between themselves. Relationships are the glue for all this interaction. A relationship connects one user to another, making it easy to read twits from other users. This chapter will focus on users and twits
+
+Create a table
+---------------
+You’ll start building TwitBase Application by laying the foundations for storing its users.With the shell prompt ahead of you, create your first table:
+
+hbase(main):001:0> create 'users', 'info'
+0 row(s) in 0.1200 seconds
+hbase(main):002:0>
+
+Presumably 'users' is the name of the table, but what about this 'info' business? tables in HBase are organized into rows and columns.  Columns in HBase are organized into groups called column families.
+
+info is a column family in the users table. A table in HBase must have at least one column family. Among other things, column families impact physical characteristics of the data store in HBase. For this reason, at least one column family must be specified at table creation time. You can alter column families after the table is created, but doing so is a little tedious
+
+Examine table schema
+--------------------
+Other than the column family name, HBase doesn’t require you to tell it anything about your data ahead of time. That’s why HBase
+is often described as a schema-less database.
+
+You can verify that your users table was created by asking HBase for a listing of all registered tables:
+
+hbase(main):002:0> list
+TABLE
+users
+1 row(s) in 0.0220 seconds
+hbase(main):003:0>
+
+The list command proves the table exists, but HBase can also give you extended details about your table. You can see all those default parameters using the describe command:
+
+hbase(main):003:0> describe 'users'
+DESCRIPTION ENABLED
+
+{NAME => 'users', FAMILIES => [{NAME => 'info', true
+BLOOMFILTER => 'NONE', REPLICATION_SCOPE => '0
+', COMPRESSION => 'NONE', VERSIONS => '3', TTL
+=> '2147483647', BLOCKSIZE => '65536', IN_MEMOR
+Y => 'false', BLOCKCACHE => 'true'}]}
+1 row(s) in 0.0330 seconds
+
+hbase(main):004:0>
+
+Establish a connection
+----------------------
+The shell is well and good, but who wants to implement TwitBase in shell commands? Those wise HBase developers thought of this and equipped HBase with a complete Java client library.
+
+The Java code for opening a connection to the users table looks like this:
+
+HTableInterface usersTable = new HTable("users");
+
+Connection management
+----------------------
+Creating a table instance is a relatively expensive operation, requiring a bit of network overhead. Rather than create a new table handle on demand, it’s better to use a connection pool. Connections are allocated from and returned to the pool. Using an
+HTablePool is more common in practice than instantiating HTables directly:
+
+HTablePool pool = new HTablePool();
+HTableInterface usersTable = pool.getTable("users");
+... // work with the table
+usersTable.close();
+
+Closing the table when you’re finished with it allows the underlying connection resources to be returned to the pool.
+
+Data Manipulation
+------------------
+Every row in an HBase table has a unique identifier called its rowkey. Other coordinates are used to locate a piece of data in an HBase table, but the rowkey is primary. Just like a primary key in a table in a relational database, rowkey values are distinct across all
+rows in an HBase table. Every interaction with data in a table begins with the rowkey.
+
+Every user in TwitBase is unique, so the user’s name makes a convenient rowkey for the users table; that’s what you’ll use.
+The HBase API is broken into operations called commands. There are five primitive commands for interacting with HBase: Get, Put, Delete, Scan, and Increment. The command used to store data is Put. To store data in a table, you’ll need to create a Put instance. Creating a Put instance from a rowkey looks like this:
+
+Put p = new Put(Bytes.toBytes("Mark Twain"));
+
+Why can’t you store the user’s name directly? All data in HBase is stored as raw data in the form of a byte array, and that includes the rowkeys. The Java client library provides a utility class, Bytes, for converting various Java data types to and from byte[] so you
+don’t have to worry about doing it yourself
+
+Storing data
+------------
+You can start by storing basic information about Mark, such as his email address and password. What happens if another person comes along whose name is also Mark Twain? They’ll conflict, and you won’t be able to store data about them in TwitBase. Instead of using the person’s real name as the rowkey, let’s use a unique username and store their real name in a column. Putting (no pun intended!) it all together:
+
+Put p = new Put(Bytes.toBytes("TheRealMT"));
+p.add(Bytes.toBytes("info"),
+Bytes.toBytes("name"),
+Bytes.toBytes("Mark Twain"));
+
+p.add(Bytes.toBytes("info"),
+Bytes.toBytes("email"),
+Bytes.toBytes("samuel@clemens.org"));
+
+p.add(Bytes.toBytes("info"),
+Bytes.toBytes("password"),
+Bytes.toBytes("Langhorne"));
+
+Remember, HBase uses coordinates to locate a piece of data within a table. The rowkey is the first coordinate, followed by the column family. The next coordinate is the column qualifier, often called simply column, or qual, once you’re versed in HBase vernacular
+
+The column qualifiers in this example are name, email, and password. Because HBase is schema-less,you never need to predefine the column qualifiers or assign them types. They’re dynamic; all you need is a name that you give them at write time. These three coordinates
+define the location of a cell. The cell is where HBase stores data as a value. A cell is identified by its [rowkey, column family, column qualifier] coordinate within a table. The previous code stores three values in three cells within a single row. The cell
+storing Mark’s name has the coordinates [TheRealMT, info, name]. The last step in writing data to HBase is sending the command to
+
+The last step in writing data to HBase is sending the command to the table. That part is easy:
+
+HTableInterface usersTable = pool.getTable("users");
+Put p = new Put(Bytes.toBytes("TheRealMT"));
+p.add(...);
+usersTable.put(p);
+usersTable.close();
+
+Modifying data
+---------------
+Changing data in HBase is done the same way you store new data: create a Put object, give it some data at the appropriate coordinates, and send it to the table. Let’s update Mark’s password to something more secure.
+
+Put p = new Put(Bytes.toBytes("TheRealMT"));
+p.add(Bytes.toBytes("info"),
+Bytes.toBytes("password"),
+Bytes.toBytes("abc123"));
+usersTable.put(p);
+
+Under the hood: the HBase write path
+------------------------------------
+Whether you use Put to record a new row in HBase or to modify an existing row, the internal process is the same. HBase receives the command and persists the change, or throws an exception if the write fails. When a write is made, by default, it goes into two
+places: the write-ahead log (WAL), also referred to as the HLog, and the MemStore (figure 2.1). The default behavior of HBase recording the write in both places is in order to maintain data durability. Only after the change is written to and confirmed in both places is the write considered complete.
+
+Please see diagram in page - 27.
+
+The MemStore is a write buffer where HBase accumulates data in memory before a permanent write. Its contents are flushed to disk to form an HFile when the MemStore fills up. It doesn’t write to an existing HFile but instead forms a new file on every flush.The HFile is the underlying storage format for HBase.
+
+HFiles belong to a column family and a column family can have multiple HFiles. But a single HFile can’t have data for multiple
+column families. There is one MemStore per column family.
+
+Failures are common in large distributed systems, and HBase is no exception. Imagine that the server hosting a MemStore that has not yet been flushed crashes. You’ll lose the data that was in memory but not yet persisted. HBase safeguards against that by writing to the WAL before the write completes. Every server that’s part of the HBase cluster keeps a WAL to record changes as they happen. The WAL is a file on the underlying file system. A write isn’t considered successful until the new WAL entry is successfully written. This guarantee makes HBase as durable as the file system backing it. Most of the time, HBase is backed by the Hadoop Distributed Filesystem (HDFS).
+
+If HBase goes down, the data that was not yet flushed from the MemStore to the HFile can be recovered by replaying the WAL. You don’t have to do this manually. It’s all handled under the hood by HBase as a part of the recovery process. There is a single WAL per HBase server, shared by all tables (and their column families) served from that server.
+
+As you can imagine, skipping the WAL during writes can help improve write performance. There’s one less thing to do, right? We don’t recommend disabling the WAL unless you’re willing to lose data when things fail. In case you want to experiment, you can disable the WAL like this:
+
+Put p = new Put();
+p.setWriteToWAL(false);
+
+NOTE Not writing to the WAL comes at the cost of increased risk of losing data in case of RegionServer failure. Disable the WAL, and HBase can’t recover your data in the face of failure. Any writes that haven’t flushed to disk will be lost.
+
+Reading data
+--------------
+Reading data back out of HBase is as easy as writing. Make a Get command instance,tell it what cells you’re interested in, and send it to the table:
+
+Get g = new Get(Bytes.toBytes("TheRealMT"));
+Result r = usersTable.get(g);
+
+The table gives you back a Result instance containing your data. This instance contains all the columns from all the column families that exist for the row. That’s potentially far more data than you need. You can limit the amount of data returned by
+placing restrictions on the Get instance. To retrieve only the password column, execute addColumn(). The same can be done per column family using addFamily(), in which case it’ll return all the columns in the specified column family:
+
+Get g = new Get(Bytes.toBytes("TheRealMT"));
+g.addColumn(
+Bytes.toBytes("info"),
+Bytes.toBytes("password"));
+Result r = usersTable.get(g);
+
+Retrieve the specific value and convert it back from bytes like so:
+Get g = new Get(Bytes.toBytes("TheRealMT"));
+g.addFamily(Bytes.toBytes("info"));
+byte[] b = r.getValue(
+Bytes.toBytes("info"),
+Bytes.toBytes("email"));
+String email = Bytes.toString(b); // "samuel@clemens.org"
+
+Under the hood: the HBase read path
+------------------------------------
+As a general rule, if you want fast access to data, keep it ordered and keep as much of it as possible in memory. HBase accomplishes both of these goals, allowing it to serve millisecond reads in most cases. A read against HBase must be reconciled between the
+persisted HFiles and the data still in the MemStore. HBase has an LRU cache for reads. This cache, also called the BlockCache, sits in the JVM heap alongside the MemStore. The BlockCache is designed to keep frequently accessed data from the HFiles in memory so as to avoid disk reads. Each column family has its own BlockCache.
+
+Understanding the BlockCache is an important part of understanding how to run HBase at optimal performance. The “Block” in BlockCache is the unit of data that HBase reads from disk in a single pass. The HFile is physically laid out as a sequence of blocks plus an index over those blocks. This means reading a block from HBase requires only looking up that block’s location in the index and retrieving it from disk. The block is the smallest indexed unit of data and is the smallest unit of data that can be read from disk.
+
+The block size is configured per column family, and the default value is 64 KB. You may want to tweak this value larger or smaller depending on your use case. If you primarily perform random lookups, you likely want a more granular block index, so a smaller block size is preferred. Having smaller blocks creates a larger index and thereby consumes more memory. If you frequently perform sequential scans, reading many blocks at a time, you can afford a larger block size. This allows you to save on memory because larger blocks mean fewer index entries and thus a smaller index.
+
+Reading a row from HBase requires first checking the MemStore for any pending modifications. Then the BlockCache is examined to see if the block containing this row has been recently accessed. Finally, the relevant HFiles on disk are accessed. There are more things going on under the hood, but this is the overall outline. 
+
+HBase read path. Data is reconciled from the BlockCache, the Mem-Store, and the HFiles to give the client an up-to-date view of the row(s) it asked for.
+
+Please see the picture in page-29
+
+Note that HFiles contain a snapshot of the MemStore at the point when it was flushed. Data for a complete row can be stored across multiple HFiles. In order to read a complete row, HBase must read across all HFiles that might contain information for that row in order to compose the complete record.
+
+Deleting data
+--------------
+Deleting data from HBase works just like storing it. You make an instance of the Delete command, constructed with a rowkey:
+
+Delete d = new Delete(Bytes.toBytes("TheRealMT"));
+usersTable.delete(d);
+
+You can delete only part of a row by specifying additional coordinates:
+
+Delete d = new Delete(Bytes.toBytes("TheRealMT"));
+d.deleteColumns(
+Bytes.toBytes("info"),
+Bytes.toBytes("email"));
+usersTable.delete(d);
+
+The method deleteColumns() removes a cell entirely from the row. This is a distinct method from deleteColumn() (notice the missing s at the end of the method name), which operates on the content of a cell.
+
+Compactions: HBase housekeeping
+--------------------------------
+The Delete command doesn’t delete the value immediately. Instead, it marks the record for deletion. That is, a new “tombstone” record is written for that value, marking it as deleted. The tombstone is used to indicate that the deleted value should no longer be included in Get or Scan results. Because HFiles are immutable, it’s not until a major compaction runs that these tombstone records are reconciled and space is truly recovered from deleted records.
+
+Compactions come in two flavors: minor and major. Both types result in a consolidation of the data persisted in HFiles. A minor compaction folds HFiles together, creating a larger HFile from multiple smaller HFiles. Please see the picture in page-31.Restricting
+the number of HFiles is important for read performance, because all of them must be referenced to read a complete row. During the compaction, HBase reads the content of the existing HFiles, writing records into a new one. Then, it swaps in the new HFile as the current active one and deletes the old ones that formed the new one.2 HBase decides which HFiles to compact based on their number and relative sizes. Minor compactions are designed to be minimally detrimental to HBase performance, so there is an upper limit on the number of HFiles involved. All of these settings are configurable.
+
+When a compaction operates over all HFiles in a column family in a given region, it’s called a major compaction. Upon completion of a major compaction, all HFiles in the column family are merged into a single file. Major compactions can also be triggered for the entire table (or a particular region) manually from the shell. This is a relatively expensive operation and isn’t done often. Minor  compactions, on the other hand, are relatively lightweight and happen more frequently.
+
+Major compactions are the only chance HBase has to clean up deleted records. Resolving a delete requires removing both the deleted record and the deletion marker. There’s no guarantee that both the record and marker are in the same HFile. A major compaction is the only time when HBase is guaranteed to have access to both of these entries at the same time.
+
+Versioned data
+--------------
+In addition to being a schema-less database, HBase is also versioned. For example, you can look back in time for the original password:
+
+List<KeyValue> passwords = r.getColumn(
+Bytes.toBytes("info"),
+Bytes.toBytes("password"));
+
+b = passwords.get(0).getValue();
+String currentPasswd = Bytes.toString(b); // "abc123"
+
+b = passwords.get(1).getValue();
+String prevPasswd = Bytes.toString(b); // "Langhorne"
+
+Every time you perform an operation on a cell, HBase implicitly stores a new version. Creating, modifying, and deleting a cell are all treated identically; they’re all new versions.Get requests reconcile which version to return based on provided parameters.
+The version is used as the final coordinate when accessing a specific cell value. HBase uses the current time4 in milliseconds when a version isn’t specified, so the version number is represented as a long. By default, HBase stores only the last three versions;
+this is configurable per column family. Each version of data within a cell contributes one KeyValue instance to the Result. You can inspect the version information in a KeyValue instance with its getTimestamp() method:
+
+long version = passwords.get(0).getTimestamp(); // 1329088818321
+
+When a cell exceeds the maximum number of versions, the extra records are dropped during the next major compaction.
+
+Instead of deleting an entire cell, you can operate on a specific version or versions within that cell. The deleteColumns() method (with the s) described previously operates on all KeyValues with a version less than the provided version. If no version is provided,
+the default of now is used. The deleteColumn() method (without the s) deletes a specific version of a cell. Be careful which method you call; they have identical calling signatures and only subtly different semantics.
+
+Data model recap
+This section covers a lot of ground, both in terms of data model and implementation details. Let’s pause momentarily to recap what we’ve discussed thus far. The logical entities in an HBase schema are as follows:
+
+■ Table—HBase organizes data into tables. Table names are Strings and composed of characters that are safe for use in a file system path.
+■ Row—Within a table, data is stored according to its row. Rows are identified uniquely by their rowkey. Rowkeys don’t have a data type and are always treated as a byte[].
+■ Column family—Data within a row is grouped by column family. Column families also impact the physical arrangement of data stored in HBase. For this reason, they must be defined up front and aren’t easily modified. Every row in a table has the same column families, although a row need not store data in all its families. Column family names are Strings and composed of characters that are safe for use in a file system path.
+■ Column qualifier—Data within a column family is addressed via its column qualifier, or column. Column qualifiers need not be specified in advance. Column qualifiers need not be consistent between rows. Like rowkeys, column qualifiers don’t have a data type and are always treated as a byte[]. Cell—A combination of rowkey, column family, and column qualifier uniquely identifies a cell. The data stored in a cell is referred to as that cell’s value. Values also don’t have a data type and are always treated as a byte[].
+■ Version—Values within a cell are versioned. Versions are identified by their timestamp, a long. When a version isn’t specified, the current timestamp is used as the basis for the operation. The number of cell value versions retained by HBase is configured via the column family. The default number of cell versions is three.
+
+Data coordinates
+----------------
+The coordinates used by HBase, in order, are rowkey, column family, column qualifier, and version.
+
+Figure 2.4 The coordinates used to identify data in an HBase table are B rowkey, C column family,D column qualifier, and E version.
+
+Figure 2.5 HBase can be considered a key-value store, where the four coordinates to a cell act as a key. In the API, the complete coordinates to a value, plus the value itself, are packaged together by the KeyValue class.
+
+Figure 2.6 Alternate views of HBase as a key-value data store. Decreasing the precision of your cell coordinates results in larger groups of KeyValues as the resulting values.
+
+Please see the figure in page 33 and 34.
+
+Considering the full set of coordinates as a unit, you can think of HBase as a keyvalue store. With this abstraction of the logical data model in mind, you can consider the coordinates as a key and the cell data as the value.
+
+2.5 Data models
+-----------
+HBase is designed for data without such a strict shape. Records can have divergent columns, variance in field size, and so on. This
+kind of data is said to have a semistructured shape.In particular, HBase can’t enforce relational constraints or provide multirow transactions.5 These next couple topics are influenced by this relationship.
+
+2.5.1 Logical model: sorted map of maps
+----------------------------------------
+
+You’ve seen the coordinate system HBase uses to identify data in a cell: [rowkey, column family, column qualifier, version]. For an
+example, take Mark’s record from the users table (figure 2.7). in page 40
+
+Figure 2.7 - Sorted map of maps. HBase logically organizes data as a nested map of maps. Within each map, data is physically sorted by that map’s key. In this example, "email" comes before "name" and more recent versions come before older ones.
+
+While thinking of this map of maps, a table is a map keyed on rowkey to the column family. Described in Java, you’d have this monstrosity: Map<RowKey, Map<ColumnFamily, Map<ColumnQualifier, Map<Version, Data>>>>.
+
+Notice also we said it’s a sorted map of maps. The example shows only a single record, but even there the sorting is present. Notice the two versions in the password cell. The newest version is sorted before the later versions. HBase sorts the version timestamp in descending order so the newest data is always on top. This physical design decision results in slightly faster access to recent versions.The other map keys are sorted in ascending order.
+
+2.5.2 Physical model: column family oriented
+--------------------------------------------
+Each column family gets its own set of HFiles on disk. This physical isolation allows the underlying HFiles of one column family to be managed in isolation of the others. As far as compactions are concerned, the HFiles for each column family are managed independently.
+
+Records in HBase are stored in the HFiles as key-value pairs. The HFile itself is a binary file and isn’t human-readable. Mark’s user data stored on disk in an HFile looks something like figure 2.8.
+
+Please see the figure 2.8 in 41.
+
+Notice that Mark’s row consumes multiple records in the HFile. Each column qualifier and version gets its own record. Also, notice there are no unused or null records.
+
+HBase doesn’t need to store anything to indicate the absence of data. For this reason,storage in the column family is column-oriented, just like in any other column-oriented database. Data from a single column family for a single row need not be stored in the
+same HFile. Mark’s info data could be spread across any number of HFiles. The only requirement is that within an HFile, data for a row’s column family is stored together.
+
+If the users table had another column family and Mark had data in those columns,Mark’s row would have records in those HFiles as well. Using separate HFiles for each column family means HBase doesn’t need to read all the data for a row when performing
+a read. It need only retrieve data for the requested column families. Being column-oriented means HBase need not read over placeholder entries when looking for a specific cell. These two physical details make for efficient storage and fast reads of particularly
+sparse datasets.
+
+Let’s say you add another column family to the users table for storing activity on the TwitBase site; it will result in more HFiles. The complete set of tooling that allows HBase to host a single row is illustrated in figure 2.9. For reasons we’ll cover in the
+next chapter, HBase refers to this machinery as a region.
+
+As you can see in figure 2.9, interacting with data in different column families involves completely separate MemStores and HFiles. This allows data in the activity column family to grow without adversely affecting performance of the info column family.
+
+Please see the diagram in page - 42.
+
+
+2.6 Table scans
+---------------
+You likely noticed the lack of a query command of any kind.
+
+The only way to access records containing a specific value is by using the Scan command to read across some portion of the table, applying a filter to retrieve only the relevant records. As you might imagine, the records returned while scanning are presented in sorted order. HBase is designed to support this kind of behavior so it’s fast.
+
+To scan the entire contents of a table, use the bare Scan constructor:
+
+Scan s = new Scan();
+
+Often, however, you’re only interested in a subset of the entire table. Perhaps you only want users with IDs starting with the letter T. Provide the Scan constructor with start and end rows:
+
+Scan s = new Scan(
+Bytes.toBytes("T"),
+Bytes.toBytes("U"));

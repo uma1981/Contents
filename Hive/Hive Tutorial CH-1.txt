@@ -1,0 +1,29 @@
+CHAPTER 1
+Introduction
+-------------
+The Hadoop ecosystem emerged as a cost-effective way of working with such large data sets. It imposes a particular programming model, called MapReduce, for breaking up computation tasks into units that can be distributed around a cluster of commodity, server class hardware, thereby providing cost-effective, horizontal scalability.Underneath 
+this computation model is a distributed file system called the Hadoop Distributed Filesystem (HDFS). Although the filesystem is “pluggable,” there are now several commercial and open source alternatives.
+
+However, a challenge remains; how do you move an existing data infrastructure to Hadoop, when that infrastructure is based on traditional relational databases and the Structured Query Language (SQL)? What about the large base of SQL users, both expert database designers and administrators, as well as casual users who use SQL to extract information from their data warehouses?
+
+This is where Hive comes in. Hive provides an SQL dialect, called Hive Query Language (abbreviated HiveQL or just HQL) for querying data stored in a Hadoop cluster.
+
+Mapping these familiar data operations to the low-level MapReduce Java API can be daunting, even for experienced Java developers. Hive does this dirty work for you, so you can focus on the query itself. Hive translates most queries to MapReduce jobs, thereby exploiting the scalability of Hadoop, while presenting a familiar SQL abstraction.
+
+Hive is most suited for data warehouse applications, where relatively static data is analyzed, fast response times are not required, and when the data is not changing rapidly.
+
+Hive is not a full database. The design constraints and limitations of Hadoop and HDFS impose limits on what Hive can do. The biggest limitation is that Hive does not provide record-level update, insert, nor delete. You can generate new tables from queries or output query results to files. Also, because Hadoop is a batch-oriented system, Hive queries have higher latency, due to the start-up overhead for MapReduce jobs. Queries that would finish in seconds for a traditional database take longer for Hive, even for relatively small data sets. Finally, Hive does not provide transactions.
+
+So, Hive doesn’t provide crucial features required for OLTP, Online Transaction Processing. It’s closer to being an OLAP tool, Online Analytic Processing, but as we’ll see, Hive isn’t ideal for satisfying the “online” part of OLAP, at least today, since there can be significant latency between issuing a query and receiving a reply, both due to the overhead of Hadoop and due to the size of the data sets Hadoop was designed to serve.
+
+If you need OLTP features for large-scale data, you should consider using a NoSQL database. Examples include HBase, a NoSQL database integrated with Hadoop,2 Cassandra, 3 and DynamoDB, if you are using Amazon’s Elastic MapReduce (EMR) or Elastic Compute Cloud (EC2).4 You can even integrate Hive with these databases (among others).
+
+So, Hive is best suited for data warehouse applications, where a large data set is maintained and mined for insights, reports, etc.
+
+However, like most SQL dialects, HiveQL does not conform to the ANSI SQL standard and it differs in various ways from the familiar SQL dialects provided by Oracle, MySQL, and SQL Server. (However, it is closest to MySQL’s dialect of SQL.)
+
+MapReduce
+---------
+MapReduce is a computing model that decomposes large data manipulation jobs into individual tasks that can be executed in parallel across a cluster of servers. The results of the tasks can be joined together to compute the final results.
+
+The MapReduce programming model was developed at Google and described in an influential paper called MapReduce

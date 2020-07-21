@@ -1,0 +1,103 @@
+HiveQL: Views
+-------------
+A view allows a query to be saved and treated like a table. It is a logical construct, as it does not store data like a table.
+
+Views to Reduce Query Complexity
+--------------------------------
+When a query becomes long or complicated, a view may be used to hide the complexity by dividing the query into smaller, more manageable pieces; similar to writing a function
+
+For example, consider the following query with a nested subquery:
+
+FROM (
+SELECT * FROM people JOIN cart
+ON (cart.people_id=people.id) WHERE firstname='john'
+) a SELECT a.lastname WHERE a.id=3;
+
+It is common for Hive queries to have many levels of nesting. In the following example, the nested portion of the query is turned into a view:
+
+CREATE VIEW shorter_join AS
+SELECT * FROM people JOIN cart
+ON (cart.people_id=people.id) WHERE firstname='john';
+
+SELECT lastname FROM shorter_join WHERE id=3
+
+Views that Restrict Data Based on Conditions
+--------------------------------------------
+The concept of a view created to limit data access can be used to protect information from the casual query:
+
+hive> CREATE TABLE userinfo (
+> firstname string, lastname string, ssn string, password string);
+hive> CREATE VIEW safer_user_info AS
+> SELECT firstname,lastname FROM userinfo;
+
+Here is another example where a view is used to restrict data based on a WHERE clause.In this case, we wish to provide a view on an employee table that only exposes employees from a specific department:
+
+hive> CREATE TABLE employee (firstname string, lastname string,
+> ssn string, password string, department string);
+hive> CREATE VIEW techops_employee AS
+> SELECT firstname,lastname,ssn FROM userinfo WERE department='techops';
+
+Views and Map Type for Dynamic Tables
+-------------------------------------
+Hive supports arrays, maps, and structs datatypes. These datatypes are not common in traditional databases as they break first normal form.
+
+Hive’s ability to treat a line of text as a map, rather than a fixed set of columns, combined with the view feature, allows you to define multiple logical tables over one physical table.
+
+For example, consider the following sample data file,this file uses ^A (Control-A) as the collection item separator and ^B (Control-B) as the separator between keys and values in the map.
+
+time^B1298598398404^Atype^Brequest^Astate^Bny^Acity^Bwhiteplains^Apart\^Bmuffler
+
+time^B1298598398432^Atype^Bresponse^Astate^Bny^Acity^Btarrytown^Apart\^Bmuffler
+
+time^B1298598399404^Atype^Brequest^Astate^Btx^Acity^Baustin^Apart^Bheadlight
+
+Table Creation
+--------------
+CREATE EXTERNAL TABLE dynamictable(cols map<string,string>)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY '\004'
+COLLECTION ITEMS TERMINATED BY '\001'
+MAP KEYS TERMINATED BY '\002'
+STORED AS TEXTFILE;
+
+Now we can create a view that extracts only rows with type equal to requests and get the city, state, and part into a view called orders:
+
+CREATE VIEW orders(state, city, part) AS
+SELECT cols["state"], cols["city"], cols["part"]
+FROM dynamictable
+WHERE cols["type"] = "request";
+
+A second view is created named shipments. This view returns the time and part column from rows where the type is response:
+
+CREATE VIEW shipments(time, part) AS
+SELECT cols["time"], cols["parts"]
+FROM dynamictable916
+WHERE cols["type"] = "response";
+
+
+View Odds and Ends
+-----------------
+Conceptual view still applies when the view and a query that uses it both contain an ORDER BY clause or a LIMIT clause. The view’s clauses are evaluated before the using query’s clauses.
+
+For example, if the view has a LIMIT 100 clause and the query has a LIMIT 200 clause,you’ll get at most 100 results.
+
+While defining a view doesn’t “materialize” any data, the view is frozen to any subsequent changes to any tables and columns that the view uses. Hence, a query using a view can fail if the referenced tables or columns no longer exist.
+
+A view’s name must be unique compared to all other table and view names in the same database.
+
+You can also add a COMMENT for any or all of the new column names. The comments are not “inherited” from the definition of the original table.
+
+The CREATE TABLE … LIKE … construct can also be used to copy a view, that is with a view as part of the LIKE expression:
+
+CREATE TABLE shipments2
+LIKE shipments;
+
+A view is dropped in the same way as a table:
+DROP VIEW IF EXISTS shipments;
+
+A view will be shown using SHOW TABLES (there is no SHOW VIEWS), however DROP TABLE cannot be used to delete a view.
+
+You cannot use a view as a target of an INSERT or LOAD command.
+
+Finally, views are read-only. You can only alter the metadata TBLPROPERTIES for a view:
+ALTER VIEW shipments SET TBLPROPERTIES ('created_at' = 'some_timestamp');

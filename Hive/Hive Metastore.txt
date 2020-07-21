@@ -1,0 +1,4 @@
+
+https://dzone.com/articles/hive-metastore-a-basic-introduction
+
+In the Metastore, the database keeps all the information related to our databases, tables, and relations as Metadata. Whenever you want to know something about your database, then you can find it easily in the Metastore.

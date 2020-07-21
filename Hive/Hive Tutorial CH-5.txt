@@ -1,0 +1,143 @@
+HiveQL: Data Manipulation
+------------------------
+
+Loading Data into Managed Tables
+--------------------------------
+
+Since Hive has no row-level insert, update, and delete operations, the only way to put data into an table is to use one of the “bulk” load operations. Or you can just write files in the correct directories by other means.
+
+LOAD DATA LOCAL INPATH '${env:HOME}/california-employees'
+OVERWRITE INTO TABLE employees
+PARTITION (country = 'US', state = 'CA');
+
+This command will first create the directory for the partition, if it doesn’t already exist, then copy the data to it.
+
+If the target table is not partitioned, you omit the PARTITION clause.
+
+If the LOCAL keyword is used, the path is assumed to be in the local filesystem. The data is copied into the final location. If LOCAL is omitted, the path is assumed to be in the distributed filesystem. In this case, the data is moved from the path to the final location.
+
+Also, because files are moved in this case, Hive requires the source and target files and directories to be in the same filesystem. For example, you can’t use LOAD DATA to load (move) data from one HDFS cluster to another.
+
+If you specify the OVERWRITE keyword, any data already present in the target directory will be deleted first. Without the keyword, the new files are simply added to the target directory. However, if files already exist in the target directory that match filenames being loaded, the old files are overwritten.
+
+Hive does not verify that the data you are loading matches the schema for the table.However, it will verify that the file format matches the table definition. For example,if the table was created with SEQUENCEFILE storage, the loaded files must be sequence files.
+
+Inserting Data into Tables from Queries
+---------------------------------------
+The INSERT statement lets you load data into a table from a query
+
+INSERT OVERWRITE TABLE employees PARTITION (country = 'US', state = 'OR')
+SELECT * FROM staged_employees se WHERE se.cnty = 'US' AND se.st = 'OR';
+
+With OVERWRITE, any previous contents of the partition (or whole table if not partitioned) are replaced.
+
+If you drop the keyword OVERWRITE or replace it with INTO, Hive appends the data rather than replaces it. This feature is only available in Hive v0.8.0 or later.
+
+However, if staged_employees is very large and you run 65 of these statements to cover all states, then it means you are scanning staged_employees 65 times! Hive offers an alternative INSERT syntax that allows you to scan the input data once and split it multiple ways. 
+
+The following example shows this feature for creating the employees partitions for three states:
+
+FROM staged_employees se
+INSERT OVERWRITE TABLE employees PARTITION (country = 'US', state = 'OR')
+SELECT * WHERE se.cnty = 'US' AND se.st = 'OR' 
+INSERT OVERWRITE TABLE employees PARTITION (country = 'US', state = 'CA')
+SELECT * WHERE se.cnty = 'US' AND se.st = 'CA'
+INSERT OVERWRITE TABLE employees PARTITION (country = 'US', state = 'IL')
+SELECT * WHERE se.cnty = 'US' AND se.st = 'IL';
+
+In fact, by using this construct, some records from the source table can be written to multiple partitions of the destination table or none of them.
+
+You can mix INSERT OVERWRITE clauses and INSERT INTO clauses, as well.
+
+Dynamic Partition Inserts
+---------------------------
+
+There’s still one problem with this syntax: if you have a lot of partitions to create, you have to write a lot of SQL! Fortunately, Hive also supports a dynamic partition feature,where it can infer the partitions to create based on query parameters.
+
+INSERT OVERWRITE TABLE employees
+PARTITION (country, state)
+SELECT ..., se.cnty, se.st
+FROM staged_employees se;
+
+Hive determines the values of the partition keys, country and state, from the last two columns in the SELECT clause. This is why we used different names in staged_employees, to emphasize that the relationship between the source column values and the output partition values is by position only and not by matching on names.
+
+Suppose that staged_employees has data for a total of 100 country and state pairs. After running this query, employees will have 100 partitions!
+
+You can also mix dynamic and static partitions. This variation of the previous query specifies a static value for the country (US) and a dynamic value for the state:
+
+INSERT OVERWRITE TABLE employees
+PARTITION (country = 'US', state)
+SELECT ..., se.cnty, se.st
+FROM staged_employees se
+WHERE se.cnty = 'US';
+
+The static partition keys must come before the dynamic partition keys.
+
+Dynamic partitioning is not enabled by default. When it is enabled, it works in “strict” mode by default, where it expects at least some columns to be static. This helps protect against a badly designed query that generates a gigantic number of partitions. For example, you partition by timestamp and generate a separate partition for each second!
+Perhaps you meant to partition by day or maybe hour instead.
+
+please see the Dynamic partitions properties table i n page - 75
+
+hive> set hive.exec.dynamic.partition=true;
+hive> set hive.exec.dynamic.partition.mode=nonstrict;
+hive> set hive.exec.max.dynamic.partitions.pernode=1000;
+hive> INSERT OVERWRITE TABLE employees
+> PARTITION (country, state)
+> SELECT ..., se.cty, se.st
+> FROM staged_employees se;
+
+Creating Tables and Loading Them in One Query
+------------------------------------------------
+You can also create a table and insert query results into it in one statement:
+
+CREATE TABLE ca_employees
+AS SELECT name, salary, address
+FROM employees
+WHERE se.state = 'CA';
+
+This table contains just the name, salary, and address columns from the employee table records for employees in California. The schema for the new table is taken from the SELECT clause.
+
+A common use for this feature is to extract a convenient subset of data from a larger, more unwieldy table.
+
+This feature can’t be used with external tables. Recall that “populating” a partition for an external table is done with an ALTER TABLE statement
+
+Exporting Data
+--------------
+How do we get data out of tables? If the data files are already formatted the way you want, then it’s simple enough to copy the directories or files:
+
+hadoop fs -cp source_path target_path
+
+Otherwise, you can use INSERT … DIRECTORY …, as in this example:
+
+INSERT OVERWRITE LOCAL DIRECTORY '/tmp/ca_employees'
+SELECT name, salary, address
+FROM employees
+WHERE se.state = 'CA';
+
+One or more files will be written to /tmp/ca_employees,depending on the number of reducers invoked.
+
+As a reminder, we can look at the results from within the hive CLI:
+hive> ! ls /tmp/ca_employees;
+000000_0
+hive> ! cat /tmp/payroll/000000_0
+John Doe100000.0201 San Antonio CircleMountain ViewCA94040
+Mary Smith80000.01 Infinity LoopCupertinoCA95014
+...
+Yes, the filename is 000000_0. If there were two or more reducers writing output, we would have additional files with similar names (e.g., 000001_0).
+
+The fields appear to be joined together without delimiters because the ^A and ^B separators aren’t rendered.
+
+Just like inserting data to tables, you can specify multiple inserts to directories:
+
+FROM staged_employees se
+INSERT OVERWRITE DIRECTORY '/tmp/or_employees'
+SELECT * WHERE se.cty = 'US' and se.st = 'OR'
+INSERT OVERWRITE DIRECTORY '/tmp/ca_employees'
+SELECT * WHERE se.cty = 'US' and se.st = 'CA'
+INSERT OVERWRITE DIRECTORY '/tmp/il_employees'
+SELECT * WHERE se.cty = 'US' and se.st = 'IL';
+
+The field delimiter for the table can be problematic. For example, if it uses the default ^A delimiter. If you export table data frequently, it might be appropriate to use comma or tab delimiters.
+
+Another workaround is to define a “temporary” table with the storage configured to match the desired output format (e.g., tab-delimited fields). Then write a query result to that table and use INSERT OVERWRITE DIRECTORY, selecting from the temporary table.
+Unlike many relational databases, there is no temporary table feature in Hive. You have to manually drop any tables you create that aren’t intended to be permanent.

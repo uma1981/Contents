@@ -1,0 +1,149 @@
+Chapter 6
+-------------
+Functional Objects
+--------------------
+
+6.2 Constructing a Rational Class
+---------------------------------
+Given we’ve decided to make Rational objects immutable, we’ll require that clients provide all data needed by an instance (in this case, a numerator and a denominator) when they construct the instance. Thus, we will start the design with this:
+
+class Rational(n: Int, d: Int)
+
+One of the first things to note about this line of code is that if a class doesn’t have a body, you don’t need to specify empty curly braces (though you could, of course, if you wanted to). The identifiers n and d in the parentheses after the class name, Rational, are called class parameters. The Scala compiler will gather up these two class parameters and create a primary constructor that takes the same two parameters.
+
+
+6.4 Checking preconditions
+--------------------------
+As a next step, we will turn our attention to a problem with the current behavior of the primary constructor. As mentioned at the beginning of this chapter, rational numbers may not have a zero in the denominator. Currently, however, the primary constructor accepts a zero passed as d:
+
+scala> new Rational(5, 0)
+res1: Rational = 5/0
+
+In the case of an immutable object such as Rational, this means that you should ensure the data is valid when the object is constructed. Given that a zero denominator is an invalid state for a Rational number, you should not let a Rational be constructed if a zero is passed in the d parameter.
+
+The best way to approach this problem is to define as a precondition of the primary constructor that d must be non-zero.  One way to do that is to use require, like this:
+
+class Rational(n: Int, d: Int) 
+{
+ require(d != 0)
+ override def toString = n +"/"+ d
+}
+
+The require method takes one boolean parameter. If the passed value is true, require will return normally. Otherwise, require will prevent the object from being constructed by throwing an IllegalArgumentException.
+
+6.5 Adding fields
+-----------------
+Now that the primary constructor is properly enforcing its precondition, we will turn our attention to supporting addition. To do so, we’ll define a public add method on class Rational that takes another Rational as a parameter. 
+
+To keep Rational immutable, the add method must not add the passed rational number to itself. Rather, it must create and return a new Rational that holds the sum. You might think you could write add this way:
+
+class Rational(n: Int, d: Int) { // This won’t compile
+ require(d != 0)
+ override def toString = n +"/"+ d
+ def add(that: Rational): Rational =
+ new Rational(n * that.d + that.n * d, d * that.d)
+}
+
+However, given this code the compiler will complain:
+<console>:11: error: value d is not a member of Rational
+new Rational(n * that.d + that.n * d, d * that.d)
+
+<console>:11: error: value d is not a member of Rational
+new Rational(n * that.d + that.n * d, d * that.d)
+
+Although class parameters n and d are in scope in the code of your add method, you can only access their value on the object on which add was invoked. Thus, when you say n or d in add’s implementation, the compiler is happy to provide you with the values for these class parameters. But it won’t let you say that.n or that.d, because that does not refer to the Rational object on which add was invoked.To access the numerator and denominator on that, you’ll need to make them into fields. Below code shows how you could add these fields to class Rational.
+
+In the version of Rational shown in below code, we added two fields named numer and denom, and initialized them with the values of class parameters n and d. We also changed the implementation of toString and add so that they use the fields, not the class parameters. This version of class Rational compiles. You can test it by adding some rational numbers:
+
+class Rational(n: Int, d: Int) 
+{
+ require(d != 0)
+ val numer: Int = n
+ val denom: Int = d
+ override def toString = numer +"/"+ denom
+ def add(that: Rational): Rational =
+  new Rational(numer * that.denom + that.numer * denom,denom * that.denom)
+}
+
+One other thing you can do now that you couldn’t do before is access the numerator and denominator values from outside the object. Simply access the public numer and denom fields, like this:
+
+scala> val r = new Rational(1, 2)
+r: Rational = 1/2
+
+scala> r.numer
+res4: Int = 1
+
+scala> r.denom
+res5: Int = 2
+
+6.6 Self references
+-------------------
+The keyword this refers to the object instance on which the currently executing method was invoked, or if used in a constructor, the object instance being constructed. As an example, consider adding a method, lessThan, which tests whether the given Rational is smaller than a parameter:
+
+def lessThan(that: Rational) = this.numer * that.denom < that.numer * this.denom
+
+Here, this.numer refers to the numerator of the object on which lessThan was invoked. You can also leave off the this prefix and write just numer; the two notations are equivalent.
+
+As an example where you can’t do without this, consider adding a max method to class Rational that returns the greater of the given rational number and an argument:
+
+def max(that: Rational) = if (this.lessThan(that)) that else this
+
+Here, the first this is redundant. You could have equally well left it off and written: lessThan(that). But the second this represents the result of the method in the case where the test returns false; were you to omit it, there would be nothing left to return!
+
+6.7 Auxiliary constructors
+--------------------------
+Sometimes you need multiple constructors in a class. In Scala, constructors other than the primary constructor are called auxiliary constructors.
+
+Adding an auxiliary constructor to Rational that takes only one argument,the numerator, with the denominator predefined to be 1. 
+
+Auxiliary constructors in Scala start with def this(...). The body of Rational’s auxiliary constructor merely invokes the primary constructor.
+
+class Rational(n: Int, d: Int) 
+{
+ require(d != 0)
+ val numer: Int = n
+ val denom: Int = d
+ def this(n: Int) = this(n, 1) // auxiliary constructor
+ override def toString = numer +"/"+ denom
+ def add(that: Rational): Rational =
+ new Rational(numer * that.denom + that.numer * denom,denom * that.denom)
+}
+
+scala> val y = new Rational(3)
+y: Rational = 3/1
+
+In Scala, every auxiliary constructor must invoke another constructor of the same class as its first action. In other words, the first statement in every auxiliary constructor in every Scala class will have the form “this(. . . )”.
+The invoked constructor is either the primary constructor (as in the Rational example), or another auxiliary constructor that comes textually before the calling constructor. The net effect of this rule is that every constructor invocation
+in Scala will end up eventually calling the primary constructor of the class. The primary constructor is thus the single point of entry of a class.
+
+6.8 Private fields and methods
+------------------------------
+class Rational(n: Int, d: Int) 
+{
+ require(d != 0)
+ private val g = gcd(n.abs, d.abs)
+ val numer = n / g
+ val denom = d / g
+ def this(n: Int) = this(n, 1)
+ def add(that: Rational): Rational =
+ new Rational ( numer * that.denom + that.numer * denom, denom * that.denom)
+ override def toString = numer +"/"+ denom
+ private def gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
+}
+
+we added a private field, g, and modified the initializers for numer and denom. Because g is private, it can be accessed inside the body of the class, but not outside. We also added a private method, gcd, which calculates the greatest common
+divisor of two passed Ints. For example, gcd(12, 8) is 4. 
+
+To make a field or method private you simply place the private keyword in front of its definition. The purpose of the private “helper method” gcd is to factor out code needed by some other part of the class, in this case, the primary constructor.
+
+6.9 Defining operators
+----------------------
+
+6.10 Identifiers in Scala
+-------------------------
+
+6.11 Method overloading
+-----------------------
+
+6.12 Implicit conversions
+--------------------------

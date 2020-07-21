@@ -1,0 +1,86 @@
+HBase is a database: the Hadoop database. It’s often described as a sparse, distributed, persistent, multidimensional sorted map, which is indexed by rowkey, column key, and timestamp.
+
+it refer to it as a key value store, a column family-oriented database, and sometimes a database storing versioned maps of
+maps. All these descriptions are correct. But fundamentally, it’s a platform for storing and retrieving data with random access, meaning you can write data as you like and read it back again as you need it. HBase stores structured and semistructured data naturally.
+
+Hello HBase
+-----------
+HBase is built on top of Apache Hadoop and Apache ZooKeeper. Like the rest of the Hadoop ecosystem components, it’s written in Java. HBase can run in three different modes: standalone, pseudo-distributed, and full-distributed. The standalone mode is what
+we’ll work with through the book. That means you’re running all of HBase in just one Java process. This is how you’ll interact with HBase for exploration and local development. You can also run in pseudo-distributed mode, a single machine running many
+Java processes. The last deployment configuration is fully distributed across a cluster of machines.
+
+The configurations for HBase primarily go into two files: hbase-env.sh and hbase-site.xml. These exist in the /etc/hbase/conf/ directory. By default in standalone mode, HBase writes data into /tmp, which isn’t the most durable place to write to. You can edit the hbasesite. xml file and put the following configuration into it to change that location to a directory of your choice:
+<property>
+<name>hbase.rootdir</name>
+<value>file:///home/user/myhbasedirectory/</value>
+</property>
+
+Your HBase install has a management console of sorts running on http://localhost:60010.
+
+
+
+Interacting with the HBase shell
+--------------------------------
+$ hbase shell
+
+listing of registered tables
+
+hbase(main):001:0> list
+TABLE
+
+Storing data
+------------
+HBase uses the table as the top-level structure for storing data. To write data into HBase, you need a table to write it into. To begin, create a table called mytable with a single column family. Yes, column family. Create your table now:
+
+hbase(main):002:0> create 'mytable', 'cf'
+0 row(s) in 1.0730 seconds
+
+hbase(main):003:0> list
+TABLE
+mytable
+1 row(s) in 0.0080 seconds
+
+WRITING DATA
+-----------
+With a table created, you can now write some data. Let’s add the string hello HBase to the table.
+
+hbase(main):004:0> put 'mytable', 'first', 'cf:message', 'hello HBase'
+0 row(s) in 0.2070 seconds
+
+That was easy. HBase stores numbers as well as strings. Go ahead and add a couple more values, like so:
+
+hbase(main):005:0> put 'mytable', 'second', 'cf:foo', 0x0
+0 row(s) in 0.0130 seconds
+
+hbase(main):006:0> put 'mytable', 'third', 'cf:bar', 3.14159
+0 row(s) in 0.0080 second
+You now have three cells in three rows in your table.
+
+You now have three cells in three rows in your table. Notice that you didn’t define the columns before you used them. Nor did you specify what type of data you stored in each column. This is what the NoSQL crowd means when they say HBase is a schema-less
+database.
+
+READING DATA
+------------
+HBase gives you two ways to read data: get and scan. the command you gave HBase to store the cells was put. get is the complement
+of put, reading back a single row. Remember when we mentioned HBase having a key-value API but with a twist? scan is that twist
+
+Chapter 2 will explain how scan works and why it’s important
+
+hbase(main):007:0> get 'mytable', 'first'
+COLUMN CELL
+cf:message timestamp=1323483954406, value=hello HBase
+1 row(s) in 0.0250 seconds	
+
+Just like that, you pulled out your first row. The shell shows you all the cells in the row, organized by column, with the value associated at each timestamp. HBase can store multiple versions of each cell. The default number of versions stored is three, but it’s configurable. At read time, only the latest version is returned, unless otherwise specified. If you don’t want multiple versions to be stored, you can configure HBase to store only one version. There is no way to disable this feature.
+
+Use scan when you want values from multiple rows. Be careful! Unless you specify otherwise, it returns all rows in the table. Don’t say we didn’t warn you. Try it:
+
+
+hbase(main):008:0> scan 'mytable'
+ROW COLUMN+CELL
+first column=cf:message, timestamp=1323483954406, value=hello HBase
+second column=cf:foo, timestamp=1323483964825, value=0
+third column=cf:bar, timestamp=1323483997138, value=3.14159
+3 row(s) in 0.0240 seconds
+
+All your data came back. Notice the order in which HBase returns rows. They’re ordered by the row name; HBase calls this the rowkey.

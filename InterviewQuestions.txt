@@ -1,0 +1,437 @@
+Black Straw
+-----------
+TNJ3363968
+9884616737
+
+21cent-63-
+97cent-291-
+
+Acc No - 20372087070-Karuppasamy
+State Bank Sayamalai - SBIN0009603
+
+Books to download => https://ru.b-ok2.org/book/2735452/6a5bb6?dsource=recommend
+Books to download => https://www.pdfdrive.com/
+
+Where table will create while calling createorreplacetempview
+Architecture
+how to configure no of tasks
+default parallelism
+Hive par/bucke
+read file recursively
+
+Data Structures and Algorithms
+linux & HDFS commands
+How to pass information from driver to executor 
+dataframe.sql is executing where in driver/executor
+what will be when one task executor is slow, whether it crash the spark job
+
+what are the deploy modes in spark ?
+Git-Hub 
+Why executors are not start working 
+Accumulator and Broadcast
+
+Scala Vs C#
+How to test Spark Application.
+Spark 1.0 vs Spark 2.0.
+Broadcast variable execution.
+3 same rows.
+How to debug long running task in spark.
+Default partition while creating dataframe.
+persist(in_memory)
+Debug and Troubleshooting spark jobs.
+Spark Performance
+Version you used - sqoop,hive,spark,scala,kafka
+
+About you and project explaination.
+Project in git hub and scd query mug-up
+Implementation challenges
+Hadoop architecture
+calculating executors
+Nunit/Junit,Test Driven
+Maven, debug -  inceptez pdf
+kafka commands - inceptez pdf
+Design Patterns
+Data Modeling - https://www.guru99.com/data-modelling-conceptual-logical.html
+Hacthan Code
+Spark performance
+Compression and encoders in spark
+Spark Architecture in file-1
+
+
+https://stackoverflow.com/questions/45914800/scala-how-to-avoid-java-lang-illegalargumentexception-when-row-geti-would-re?rq=1
+
+https://stackoverflow.com/questions/47443483/how-do-i-apply-schema-with-nullable-false-to-json-reading
+
+https://issues.apache.org/jira/browse/SPARK-10848
+
+HDFS, YARN architecture - Done
+Sqoop - Done
+Hive - Done
+Nifi - Done
+Kafka - Done
+Spark - Done
+Scala - Done
+ES - Done
+Cassandra
+Kibana
+Oozie - Done
+Maven
+S3
+GitHub
+
+##########################################################################
+
+Ability to analyze and do Spark – Cassandra architecture review and fix performance issues: Jobs not utilizing all cores
+
+
+##########################################################################
+
+LOGGING INFO USING log4j
+
+package org.at.bowels
+
+import org.apache.log4j.Logger
+import org.apache.spark.{SparkConf, SparkContext}
+
+
+object JobRunner {
+  val logger =  Logger.getLogger(this.getClass.getName)
+
+  def main(args: Array[String]): Unit = {
+    val conf = new SparkConf().setAppName("Logger Script")
+    val sc = new SparkContext(conf)
+
+    logger.info("SparkContext Has Been Created For Logger Script")
+
+    val simpleRdd = sc.parallelize(1 to 300).repartition(4)
+
+    logger.warn("RDD Has Been Repartitioned")
+
+    val sum = simpleRdd.map(x => x * x).reduce(_ + _)
+
+    logger.info(s"Calculated Sum = $sum")
+    logger.warn("The Application Is About To Exit")
+  }
+
+}
+
+This information can be viewed using the below command 
+yarn logs --applicationId application_1518439089919_3998 -log_files bowels.log
+
+spark-submit --driver-java-options "-Dlog4j.configuration=file:/tmp/driver_log4j.properties"
+--class org.apache.spark.examples.JavaSparkPi --master yarn-client --num-executors 3
+--driver-memory 512m --executor-memory 512m --executor-cores 1 spark-examples*.jar 10
+
+The Executor logs can always be fetched from Spark History Server UI whether you are running the job in yarn-client or yarn-cluster mode.
+
+a.Go to Spark History Server UI
+
+b.Click on the App ID
+
+c.Navigate to Executors tab
+
+More details can get using the Url - https://medium.com/@cupreous.bowels/logging-in-spark-with-log4j-how-to-customize-a-driver-and-executors-for-yarn-cluster-mode-1be00b984a7c
+##########################################################################
+
+https://www.datastax.com/blog/2014/10/common-spark-troubleshooting
+
+##########################################################################
+
+Spark History Server
+
+The Spark history server is a monitoring tool that displays information about completed Spark applications.The Spark History server allows us to review Spark application performance metrics and execution plans after the application has completed. The default Spark installation comes with built-in scripts: sbin/start-history-server.sh and sbin/stop-history-server.sh. But Spark is not configured for the History server by default. We should configure it yourself by changing configuration.
+
+##########################################################################
+CreateOrReplaceTempView 
+
+The CreateOrReplaceTempView will create a temporary view of the table on memory, it is not persistent at this moment but you can run SQL query on top of that. If you want to save it you can either persist or use saveAsTable to save.
+
+DataFrames can also be saved as persistent tables into Hive metastore using the saveAsTable command. Notice existing Hive deployment is not necessary to use this feature. Spark will create a default local Hive metastore (using Derby) for you. Unlike the createOrReplaceTempView command, saveAsTable will materialize the contents of the DataFrame and create a pointer to the data in the Hive metastore. Persistent tables will still exist even after your Spark program has restarted, as long as you maintain your connection to the same metastore. A DataFrame for a persistent table can be created by calling the table method on a SparkSession with the name of the table.
+
+By default saveAsTable will create a “managed table”, meaning that the location of the data will be controlled by the metastore. Managed tables will also have their data deleted automatically when a table is dropped.
+
+spark.catalog.dropTempView("name")
+
+##########################################################################
+vectorised query execution plan.
+
+https://docs.cloudera.com/documentation/enterprise/6/6.3/topics/hive_query_vectorization.html
+
+##########################################################################
+
+sc.textFile(...) returns a RDD[String]
+
+textFile(String path, int minPartitions)
+Read a text file from HDFS, a local file system (available on all nodes), or any Hadoop-supported file system URI, and return it as an RDD of Strings.
+
+spark.read.text(...) returns a DataSet[Row] or a DataFrame
+
+##########################################################################
+Deployment mode in Spark
+
+local mode
+Think of local mode as executing a program on your laptop using single JVM. It can be java, scala or python program where you have defined & used spark context object, imported spark libraries and processed data residing in your system.
+
+
+YARN
+In reality Spark programs are meant to process data stored across machines. Executors process data stored on these machines. We need a utility to monitor executors and manage resources on these machines( clusters). So when you run spark program on HDFS you can leverage hadoop's resource manger utility i.e. yarn. Hadoop properties is obtained from ‘HADOOP_CONF_DIR’ set inside spark-env.sh or bash_profile.
+
+There are two deploy modes that can be used to launch Spark applications on YARN. In cluster mode, the Spark driver runs inside an application master process which is managed by YARN on the cluster, and the client can go away after initiating the application. In client mode, the driver runs in the client process, and the application master is only used for requesting resources from YARN.
+
+
+Spark Standalone
+Spark distribution comes with its own resource manager also. When your program uses spark's resource manager, execution mode is called Standalone. Moreover, Spark allows us to create distributed master-slave architecture, by configuring properties file under $SPARK_HOME/conf directory. By Default it is set as single node cluster just like hadoop's psudo-distribution-mode.
+
+
+##########################################################################
+What reasons you give to justify your expected salary in an interview?
+
+Based on the market knowledge I have, Candidates with my skill set and experience are being paid similarly. And I am not frequent job changer,  As you are aware of the hikes one gets annually after moving to a company, so I would like to paid averagely for my experience,
+
+##########################################################################
+Differences between coalesce and repartition
+
+coalesce
+--------
+The coalesce method reduces the number of partitions in a DataFrame.The coalesce algorithm moved the data from Partition B to Partition A and moved the data from Partition D to Partition C. The data in Partition A and Partition C does not move with the coalesce algorithm. This algorithm is fast in certain situations because it minimizes data movement.
+
+You can try to increase the number of partitions with coalesce, but it won’t work!
+
+repartition
+-----------
+The repartition method can be used to either increase or decrease the number of partitions in a DataFrame.
+
+The repartition algorithm does a full shuffle of the data and creates equal sized partitions of data. coalesce combines existing partitions to avoid a full shuffle.
+
+###########################################################################
+
+Number of Partitions of Spark Dataframe
+
+I know that for a RDD, while creating it we can mention the number of partitions like below.
+
+val RDD1 = sc.textFile("path" , 6) 
+But for Spark dataframe while creating looks like we do not have option to specify number of partitions like for RDD.
+
+Only possibility i think is, after creating dataframe we can use repartition API.
+
+df.repartition(4)
+
+Datasets created from RDD inherit number of partitions from its parent.
+
+
+Partitioning in spark while reading from RDBMS via JDBC
+--------------------------------------------------------
+As per Spark docs, these partitioning parameters describe how to partition the table when reading in parallel from multiple workers:
+
+partitionColumn
+lowerBound
+upperBound
+numPartitions
+These are optional parameters.
+
+How does spark.csv determine the number of partitions on read?
+--------------------------------------------------------------
+spark.csv.read("filepath").load().rdd.getNumPartitions
+I get 77 partitions for a 350 MB file in one system, and 88 partitions in another.
+
+Number of partitions is influenced by multiple factors - typically
+
+--> spark.default.parallelism
+--> number of files that you're reading (if reading files from directory)
+--> cluster manager/number of cores (see spark configuration) which influences spark.default.parallelism
+--> Number of partitions when reading from text file (and CSV as well) should be determined as math.min(defaultParallelism, 2) based on CSVDataSource
+
+
+############################################################################
+
+By default how many partitions are created in RDD in Apache spark?
+
+Well, it depends on the block of files in HDFS. If you are using the default settings of Spark, then one partition is created for every block of a file. But you can explicitly specify the number of partitions to be created.
+
+Here is an example below:
+
+val rdd1 = sc.textFile("/home/hdadmin/wc-data.txt")
+
+############################################################################
+
+How can I send large messages with Kafka (over 15MB)?
+
+replica.fetch.max.bytes (default: 1MB)
+
+The idea is to have equal size of message being sent from Kafka Producer to Kafka Broker and then received by Kafka Consumer i.e.
+
+Kafka producer --> Kafka Broker --> Kafka Consumer
+
+You need to override the following properties:
+
+Kafka Producer sends 15 MB --> Kafka Broker Allows/Stores 15 MB --> Kafka Consumer receives 15 MB
+
+The setting therefore should be:
+
+a) on Broker: Broker Configs($KAFKA_HOME/config/server.properties)
+
+message.max.bytes=15728640 
+replica.fetch.max.bytes=15728640
+
+b) on Consumer: Consumer Configs($KAFKA_HOME/config/consumer.properties)
+fetch.message.max.bytes=15728640
+
+This step didn't work for me. I add it to the consumer app and it was working fine
+Restart the server.
+
+#############################################################################
+
+Kappa Architecture and Lambda Architecture
+
+#############################################################################
+
+A Discretized Stream (DStream), the basic abstraction in Spark Streaming, is a continuous sequence of RDDs (of the same type) representing a continuous stream of data (see spark.RDD for more details on RDDs). 
+
+############################################################################
+
+How to reduce Spark shuffling
+
+-> Using the broadcast variables
+-> The other alternative (good practice to implement) is to implement the predicated pushdown
+-> Last but not recommended approach is to extract form single partition by keeping the option .repartitin(1)
+
+https://community.cloudera.com/t5/Support-Questions/How-to-reduce-Spark-shuffling-caused-by-join-with-data/td-p/205787
+#############################################################################
+BroadCasting
+
+Broadcast variables in Apache Spark is a mechanism for sharing variables across executors that are meant to be read-only. Without broadcast variables these variables would be shipped to each executor for every transformation and action, and this can cause network overhead. However, with broadcast variables, they are shipped once to all executors and are cached for future reference.
+
+https://www.edureka.co/blog/broadcast-variables/
+
+Accumulators are variables that are used for aggregating information across the executors. For example, this information can pertain to data or API diagnosis like how many records are corrupted or how many times a particular library API was called.
+
+To understand why we need accumulators, let’s see a small example.
+
+Must see, easy to read - https://www.edureka.co/blog/spark-accumulators-explained
+#############################################################################
+-> When calling actions, what happening inside spark, i.e stages in spark.
+https://dzone.com/articles/how-spark-internally-executes-a-program - -- Use this URL, already read this one.
+#############################################################################
+-> What are the joins in hive, i.e map side join etc.
+https://acadgild.com/blog/map-side-joins-in-hive -- Use this URL, already read this one.
+https://data-flair.training/blogs/map-join-in-hive/
+#############################################################################
+-> Oozie workflow, architecture and configuration.
+#############################################################################
+-> What is the default DB for Hive.
+ Derby SQL server
+Please read the file Hive Tutorial CH-2.txt file
+#############################################################################
+-> Metastore in hive.
+
+63->916000
+291-> 42253n->4225320
+
+The Hive Metastore, also referred to as HCatalog is a relational database repository containing metadata about objects you create in Hive. When you create a Hive table, the table definition (column names, data types, comments, etc.) are stored in the Hive Metastore. This is automatic and simply part of the Hive architecture. The reason why the Hive Metastore is critical is because it acts as a central schema repository which can be used by other access tools like Spark and Pig. Additionally, through Hiveserver2 you can access the Hive Metastore using ODBC and JDBC connections. This opens the schema to visualization tools like PowerBi or Tableau.
+
+https://community.cloudera.com/t5/Support-Questions/How-the-hive-metastore-works/td-p/136619
+#############################################################################
+-> what is the meaning of resilent pharse in RDD.
+Resilent means fault-tolerant. By using RDD lineage graph(DAG), we can recompute missing or damaged partitions due to node failures.
+
+rdd lineage
+https://data-flair.training/blogs/rdd-lineage/
+#############################################################################
+-> What are the types of no sql dbs.
+https://dzone.com/articles/nosql-database-types-1
+#############################################################################
+-> what is the importance of cassandra over other DBs.
+#############################################################################
+-> Architeture of spark
+
+You have to explain the first step in spark => Chapter-1-Introduction to Apache Spark.txt
+#############################################################################
+-> How to calculate executors, node while submit the spark job.
+-> What happen when submitting the spark application, if we dont have enough node/executor to load that much data.
+
+http://www.mycloudplace.com/calculating-executor-memory-number-of-executors-cores-per-executor-for-a-spark-application/
+
+Must see the Dynamic Allocation part only in site http://site.clairvoyantsoft.com/understanding-resource-allocation-configurations-spark-application/
+#############################################################################
+-> Performance in hive like vectorisation and others
+
+To improve the performance of operations we use Vectorized query execution. Here operations refer to scans, aggregations, filters, and joins. It happens by performing them in batches of 1024 rows at once instead of single row each time.
+
+https://docs.cloudera.com/documentation/enterprise/6/6.3/topics/hive_query_vectorization.html - Must see
+
+https://data-flair.training/blogs/hive-optimization-techniques/
+https://community.cloudera.com/t5/Support-Questions/Hive-How-does-Vectorization-work/td-p/196650
+#############################################################################
+-> How to do incremental load the file in spark.
+https://stackoverflow.com/questions/53587175/spark-incremental-loading-overwrite-old-record
+#############################################################################
+-> What is the default paralise config parameter in spark
+https://stackoverflow.com/questions/35384251/spark-default-parallelism-for-parallelize-rdd-defaults-to-2-for-spark-submit
+https://www.quora.com/How-can-I-check-parallelism-default-value-in-my-spark-cluster-and-provide-the-steps-to-increase-the-parallelism-value-in-apache-spark
+########################################
+-> types of transformation/actions in spark
+https://data-flair.training/forums/topic/what-are-the-types-of-apache-spark-transformation/
+########################################
+-> How to update records in spark/hive
+https://intellipaat.com/community/988/how-to-delete-and-update-a-record-in-hive
+########################################
+-> How pass parameters to Hive queries
+http://dwgeek.com/run-hive-script-file-passing-parameter-working-example.html/
+https://stackoverflow.com/questions/46654725/how-to-pass-multiple-parameter-in-hive-script
+########################################
+-> Types of partition in Hive.
+https://stackoverflow.com/questions/46654725/how-to-pass-multiple-parameter-in-hive-script
+########################################
+-> What are the contents contain in spark.implicit namespace.
+http://codingjunkie.net/learning-scala-implicits-with-spark/
+########################################
+-> What is ambari
+-> Scheduling a spark job
+-> DAG
+
+########################################
+Managed Tables vs External Table in Hive
+########################################
+How to select particular columns while loading the csv file.
+########################################
+TDD in Scala
+
+testing frameworks - JUNIT,TestNG,HamCrest or Mockito
+
+See the package imported org.junit.Assert, org.junit.Test
+
+See the Annotation, Methodname and test method like AssertEquals,AssertTrue,AssertThat and also expectedexception also
+
+
+
+look the video from 4 to 7 min, and see 13:53 also   https://www.youtube.com/watch?v=dpJyxAW-coQ
+
+########################################
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+Class 29 - Development and Deployment Life Cycle of Spark Applications using Scala
+itversity
+
+
+Spark Scenario Based Interview Question | out of memory
+TechWithViresh
+#######################################
+
+The NameNode stores modifications to the file system as a log appended to a native file system file, edits. 
+
+When a NameNode starts up, it reads HDFS state from an image file, fsimage, and then applies edits from the edits log file.
+
+It then writes new HDFS state to the fsimage and starts normal operation with an empty edits file.
+
+FsImage is a file stored on the OS filesystem that contains the complete directory structure (namespace) of the HDFS with details about the location of the data on the Data Blocks and which blocks are stored on which node.
+
+EditLogs is a transaction log that recorde the changes in the HDFS file system or any action performed on the HDFS cluster such as addtion of a new block, replication, deletion etc., It records the changes since the last FsImage was created, it then merges the changes into the FsImage file to create a new FsImage file.
+
+When we are starting namenode, latest FsImage file is loaded into "in-memory" and at the same time, EditLog file is also loaded into memory if FsImage file does not contain up to date information.
+
+Namenode stores metadata in "in-memory" in order to serve the multiple client request(s) as fast as possible. If this is not done,  then for every operation , namenode has to read the metadata information from the disk to in-memory. This process will consume more disk seek time for every operation.
+
+#######################################

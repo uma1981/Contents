@@ -1,0 +1,304 @@
+CHAPTER 10
+Tuning
+-----------
+Using EXPLAIN
+--------------
+
+EXPLAIN EXTENDED
+----------------
+
+Limit Tuning
+------------
+The LIMIT clause is commonly used, often by people working with the CLI. However, in many cases a LIMIT clause still executes the entire query, then only returns a handful of results. Because this behavior is generally wasteful, it should be avoided when possible. Hive has a configuration property to enable sampling of source data for use with LIMIT:
+
+<property>
+	<name>hive.limit.optimize.enable</name>
+	<value>true</value>
+	<description>Whether to enable to optimization to
+	try a smaller subset of data for simple LIMIT first.</description>
+</property>
+
+Once the hive.limit.optimize.enable is set to true, two variables control its operation, hive.limit.row.max.size and hive.limit.optimize.limit.file:
+
+<property>
+	<name>hive.limit.row.max.size</name>
+	<value>100000</value>
+	<description>When trying a smaller subset of data for simple LIMIT,
+	how much size we need to guarantee each row to have at least.
+	</description>
+</property>
+
+<property>
+	<name>hive.limit.optimize.limit.file</name>
+	<value>10</value>
+	<description>When trying a smaller subset of data for simple LIMIT,
+	maximum number of files we can sample.</description>
+</property>
+
+A drawback of this feature is the risk that useful input data will never get processed. For example, any query that requires a reduce step, such as most JOIN and GROUP BY operations, most calls to aggregate functions, etc., will have very different results. Perhaps this difference is okay in many cases, but it’s important to understand.
+
+Optimized Joins
+---------------
+We discussed optimizing join performance in “Join Optimizations” on page 100 and “Map-side Joins” on page 105. We won’t reproduce the details here, but just remind
+yourself that it’s important to know which table is the largest and put it last in the JOIN clause, or use the /* streamtable(table_name) */ directive.
+
+If all but one table is small enough, typically to fit in memory, then Hive can perform a map-side join, eliminating the need for reduce tasks and even some map tasks. Sometimes even tables that do not fit in memory are good candidates because removing the reduce phase outweighs the cost of bringing semi-large tables into each map tasks.
+
+Local Mode
+----------
+Many Hadoop jobs need the full scalability benefits of Hadoop to process large data sets. However, there are times when the input to Hive is very small. In these cases, the overhead of launching tasks for queries consumes a significant percentage of the overall job execution time. In many of these cases, Hive can leverage the lighter weight of the local mode to perform all the tasks for the job on a single machine and sometimes in the same process. The reduction in execution times can be dramatic for small data sets.
+
+You can explicitly enable local mode temporarily, as in this example:
+
+hive> set oldjobtracker=${hiveconf:mapred.job.tracker};
+hive> set mapred.job.tracker=local;
+hive> set mapred.tmp.dir=/home/edward/tmp;
+hive> SELECT * from people WHERE firstname=bob;
+...
+hive> set mapred.job.tracker=${oldjobtracker};
+
+You can also tell Hive to automatically apply this optimization by setting hive.exec.mode.local.auto to true, perhaps in your $HOME/.hiverc.
+To set this property permanently for all users, change the value in your $HIVE_HOME/conf/hive-site.xml:
+
+<property>
+	<name>hive.exec.mode.local.auto</name>
+	<value>true</value>
+	<description>
+		Let hive determine whether to run in local mode automatically
+	</description>
+</property>
+
+Parallel Execution
+------------------
+Hive converts a query into one or more stages. Stages could be a MapReduce stage, a sampling stage, a merge stage, a limit stage, or other possible tasks Hive needs to do. By default, Hive executes these stages one at a time. However, a particular job may consist of some stages that are not dependent on each other and could be executed in parallel, possibly allowing the overall job to complete more quickly. However, if more stages are run simultaneously, the job may complete much faster.
+Setting hive.exec.parallel to true enables parallel execution. Be careful in a shared cluster, however. If a job is running more stages in parallel, it will increase its cluster utilization:
+
+<property>
+	<name>hive.exec.parallel</name>
+	<value>true</value>
+	<description>Whether to execute jobs in parallel</description>
+</property>
+
+
+Strict Mode
+-----------
+Strict mode is a setting in Hive that prevents users from issuing queries that could have unintended and undesirable effects.
+
+Setting the property hive.mapred.mode to strict disables three types of queries.
+
+First, queries on partitioned tables are not permitted unless they include a partition filter in the WHERE clause, limiting their scope. In other words, you’re prevented from queries that will scan all partitions. The rationale for this limitation is that partitioned tables often hold very large data sets that may be growing rapidly. An unrestricted partition could consume unacceptably large resources over such a large table:
+
+hive> SELECT DISTINCT(planner_id) FROM fracture_ins WHERE planner_id=5;
+FAILED: Error in semantic analysis: No Partition Predicate Found for
+Alias "fracture_ins" Table "fracture_ins"
+
+The following enhancement adds a partition filter—the table partitions—to the WHERE clause:
+
+hive> SELECT DISTINCT(planner_id) FROM fracture_ins
+> WHERE planner_id=5 AND hit_date=20120101;
+... normal results ...
+
+The second type of restricted query are those with ORDER BY clauses, but no LIMIT clause.Because ORDER BY sends all results to a single reducer to perform the ordering, forcing the user to specify a LIMIT clause prevents the reducer from executing for an extended period of time:
+
+hive> SELECT * FROM fracture_ins WHERE hit_date>2012 ORDER BY planner_id;
+FAILED: Error in semantic analysis: line 1:56 In strict mode,
+limit must be specified if ORDER BY is present planner_id
+
+To issue this query, add a LIMIT clause:
+
+hive> SELECT * FROM fracture_ins WHERE hit_date>2012 ORDER BY planner_id
+> LIMIT 100000;
+... normal results ...
+
+The third and final type of query prevented is a Cartesian product. Users coming from the relational database world may expect that queries that perform a JOIN not with an ON clause but with a WHERE clause will have the query optimized by the query planner,effectively converting the WHERE clause into an ON clause. Unfortunately, Hive does not perform this optimization, so a runaway query will occur if the tables are large:
+
+hive> SELECT * FROM fracture_act JOIN fracture_ads
+> WHERE fracture_act.planner_id = fracture_ads.planner_id;
+FAILED: Error in semantic analysis: In strict mode, cartesian product
+is not allowed. If you really want to perform the operation,
++set hive.mapred.mode=nonstrict+
+
+Here is a properly constructed query with JOIN and ON clauses:
+
+hive> SELECT * FROM fracture_act JOIN fracture_ads
+> ON (fracture_act.planner_id = fracture_ads.planner_id);
+... normal results ...
+
+Tuning the Number of Mappers and Reducers
+------------------------------------------
+Hive is able to parallelize queries by breaking the query into one or more MapReduce jobs. Each of which might have multiple mapper and reducer tasks, at least some of
+which can run in parallel. Determining the optimal number of mappers and reducers depends on many variables, such as the size of the input and the operation being performed on the data
+
+Having too many mapper or reducer tasks causes excessive overhead in starting, scheduling, and running the job, while too few tasks means the inherent parallelism of the cluster is underutilized
+
+When running a Hive query that has a reduce phase, the CLI prints information about how the number of reducers can be tuned. Let’s see an example that uses a GROUP BY
+query, because they always require a reduce phase. In contrast, many other queries are converted into map-only jobs:
+
+hive> SELECT pixel_id, count FROM fracture_ins WHERE hit_date=20120119
+> GROUP BY pixel_id;
+Total MapReduce jobs = 1
+Launching Job 1 out of 1
+Number of reduce tasks not specified. Estimated from input data size: 3
+In order to change the average load for a reducer (in bytes):
+set hive.exec.reducers.bytes.per.reducer=<number>
+In order to limit the maximum number of reducers:
+set hive.exec.reducers.max=<number>
+In order to set a constant number of reducers:
+set mapred.reduce.tasks=<number>
+
+Hive is determining the number of reducers from the input size. This can be confirmed using the dfs -count command, which works something like the Linux du -s command;
+it computes a total size for all the data under a given directory:
+[edward@etl02 ~]$ hadoop dfs -count /user/media6/fracture/ins/* | tail -4
+1 8 2614608737 hdfs://.../user/media6/fracture/ins/hit_date=20120118
+1 7 2742992546 hdfs://.../user/media6/fracture/ins/hit_date=20120119
+1 17 2656878252 hdfs://.../user/media6/fracture/ins/hit_date=20120120
+1 2 362657644 hdfs://.../user/media6/fracture/ins/hit_date=20120121
+
+(We’ve reformatted the output and elided some details for space.)
+The default value of hive.exec.reducers.bytes.per.reducer is 1 GB. Changing this value to 750 MB causes Hive to estimate four reducers for this job:
+hive> set hive.exec.reducers.bytes.per.reducer=750000000;
+hive> SELECT pixel_id,count(1) FROM fracture_ins WHERE hit_date=20120119
+> GROUP BY pixel_id;
+Total MapReduce jobs = 1
+Launching Job 1 out of 1
+Number of reduce tasks not specified. Estimated from input data size: 4
+
+JVM Reuse
+----------
+JVM reuse is a Hadoop tuning parameter that is very relevant to Hive performance, especially scenarios where it’s hard to avoid small files and scenarios with lots of tasks, most which have short execution times.
+
+The default configuration of Hadoop will typically launch map or reduce tasks in a forked JVM. The JVM start-up may create significant overhead, especially when
+launching jobs with hundreds or thousands of tasks. Reuse allows a JVM instance to be reused up to N times for the same job. This value is set in Hadoop’s mapredsite.
+xml (in $HADOOP_HOME/conf):
+<property>
+	<name>mapred.job.reuse.jvm.num.tasks</name>
+	<value>10</value>
+	<description>How many tasks to run per jvm. If set to -1, there is no limit.
+	</description>
+</property>
+
+A drawback of this feature is that JVM reuse will keep reserved task slots open until the job completes, in case they are needed for reuse. If an “unbalanced” job has some reduce tasks that run considerably longer than the others, the reserved slots will sit idle, unavailable for other jobs, until the last task completes.
+
+Indexes
+-------
+Indexes may be used to accelerate the calculation speed of a GROUP BY query.Hive contains an implementation of bitmap indexes since v0.8.0. The main use case
+for bitmap indexes is when there are comparatively few values for a given column. See “Bitmap Indexes” on page 118 for more information.
+
+Dynamic Partition Tuning
+------------------------
+As explained in “Dynamic Partition Inserts” on page 74, dynamic partition INSERT statements enable a succinct SELECT statement to create many new partitions for insertion into a partitioned table.
+
+This is a very powerful feature, however if the number of partitions is high, a large number of output handles must be created on the system. This is a somewhat uncommon use case for Hadoop, which typically creates a few files at once and streams large amounts of data to them.
+
+Out of the box, Hive is configured to prevent dynamic partition inserts from creating more than 1,000 or so partitions. While it can be bad for a table to have too many partitions, it is generally better to tune this setting to the larger value and allow these queries to work.
+
+First, it is always good to set the dynamic partition mode to strict in your hivesite.xml, as discussed in “Strict Mode” on page 137. When strict mode is on, at
+least one partition has to be static, as demonstrated in “Dynamic Partition Inserts” on page 74:
+
+<property>
+	<name>hive.exec.dynamic.partition.mode</name>
+	<value>strict</value>
+	<description>In strict mode, the user must specify at least one
+	static partition in case the user accidentally overwrites all
+	partitions.</description>
+</property>
+
+Then, increase the other relevant properties to allow queries that will create a large number of dynamic partitions, for example:
+<property>
+	<name>hive.exec.max.dynamic.partitions</name>
+	<value>300000</value>
+	<description>Maximum number of dynamic partitions allowed to be
+	created in total.</description>
+</property>
+
+<property>
+	<name>hive.exec.max.dynamic.partitions.pernode</name>
+	<value>10000</value>
+	<description>Maximum number of dynamic partitions allowed to be
+	created in each mapper/reducer node.</description>
+</property>
+
+In Hadoop v0.20.2, the default value is 256, which is too low. The value affects the number of maximum threads and resources, so setting it to a very high number is not recommended. Note also that in Hadoop v0.20.2, changing this variable requires restarting the DataNode to take effect:
+
+<property>
+	<name>dfs.datanode.max.xcievers</name>
+	<value>8192</value>
+</property>
+
+Speculative Execution
+---------------------
+Speculative execution is a feature of Hadoop that launches a certain number of duplicate tasks. While this consumes more resources computing duplicate copies of data
+that may be discarded, the goal of this feature is to improve overall job progress by getting individual task results faster, and detecting then black-listing slow-running TaskTrackers.
+
+Hadoop speculative execution is controlled in the $HADOOP_HOME/conf/mapredsite. xml file by the following two variables:
+
+<property>
+	<name>mapred.map.tasks.speculative.execution</name>
+	<value>true</value>
+	<description>If true, then multiple instances of some map tasks
+	may be executed in parallel.</description>
+</property>
+
+<property>
+	<name>mapred.reduce.tasks.speculative.execution</name>
+	<value>true</value>
+	<description>If true, then multiple instances of some reduce tasks
+	may be executed in parallel.</description>
+</property>
+
+However, Hive provides its own variable to control reduce-side speculative execution:
+Speculative Execution
+
+<property>
+	<name>hive.mapred.reduce.tasks.speculative.execution</name>
+	<value>true</value>
+	<description>Whether speculative execution for
+	reducers should be turned on. </description>
+</property>
+
+It is hard to give a concrete recommendation about tuning these speculative execution variables. If you are very sensitive to deviations in runtime, you may wish to turn these features on. However, if you have long-running map or reduce tasks due to large amounts of input, the waste could be significant.
+
+Single MapReduce MultiGROUP BY
+------------------------------
+Another special optimization attempts to combine multiple GROUP BY operations in a query into a single MapReduce job. For this optimization to work, a common set of
+GROUP BY keys is required:
+<property>
+	<name>hive.multigroupby.singlemr</name>
+	<value>false</value>
+	<description>Whether to optimize multi group by query to generate single M/R
+	job plan. If the multi group by query has common group by keys, it will be
+	optimized to generate single M/R job.</description>
+</property>
+
+Virtual Columns
+---------------
+Hive provides two virtual columns: one for the input filename for split and the other for the block offset in the file. These are helpful when diagnosing queries where Hive is producing unexpected or null results. By projecting these “columns,” you can see which file and row is causing problems:
+
+hive> set hive.exec.rowoffset=true;
+hive> SELECT INPUT__FILE__NAME, BLOCK__OFFSET__INSIDE__FILE, line
+> FROM hive_text WHERE line LIKE '%hive%' LIMIT 2;
+har://file/user/hive/warehouse/hive_text/folder=docs/
+data.har/user/hive/warehouse/hive_text/folder=docs/README.txt 2243
+http://hive.apache.org/
+
+har://file/user/hive/warehouse/hive_text/folder=docs/
+data.har/user/hive/warehouse/hive_text/folder=docs/README.txt 3646
+- Hive 0.8.0 ignores the hive-default.xml file, though we continue
+
+(We wrapped the long output and put a blank line between the two output rows.)
+
+A third virtual column provides the row offset of the file. It must be enabled explicitly:
+
+<property>
+	<name>hive.exec.rowoffset</name>
+	<value>true</value>
+	<description>Whether to provide the row offset virtual column</description>
+</property>
+
+Now it can be used in queries:
+
+hive> SELECT INPUT__FILE__NAME, BLOCK__OFFSET__INSIDE__FILE,
+> ROW__OFFSET__INSIDE__BLOCK
+> FROM hive_text WHERE line LIKE '%hive%' limit 2;
+file:/user/hive/warehouse/hive_text/folder=docs/README.txt 2243 0
+vcty   file:/user/hive/warehouse/hive_text/folder=docs/README.txt 3646 0

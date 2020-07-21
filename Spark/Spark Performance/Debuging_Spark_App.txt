@@ -1,0 +1,60 @@
+Spark Troubleshooting guide: Running Spark: How do I add verbose logs for Spark Driver and Executor?
+####################################################################################################
+Since Spark application runs on JVM, the --verbose and the --verbose:class options are both available.
+
+Two switches are relevant in this context. The --verbose option provides configuration details and --verbose:class option reveals the classes loaded by the driver and executor. This debugging utility helps you trace class path conflicts for driver and executor.
+
+Solution
+
+1) To list the classes loaded by JVM while running a Java program, use --verbose option. The output is a list of all the classes loaded by the Class loader and the source that called the class. The following is a sample code using the --verbose:class option.
+
+./spark-shell  --conf "spark.executor.extraJavaOptions=-verbose:class"  --conf "spark.driver.extraJavaOptions=-verbose:class"
+
+
+2) To launch the spark-shell or to run a Spark program using spark-submit, use --verbose option. The --verbose option outputs fine-grained debugging information like where the application loading source.
+
+./spark-shell --verbose
+
+Spark Troubleshooting Guide: How to collect GC statistics for Spark (Garbage Collection)
+########################################################################################
+To collect statistics on how frequently garbage collection occurs and the amount of time spent GC, consider the following examples.
+
+
+./bin/spark-submit --name "My app" --master local[4] --conf spark.eventLog.enabled=false
+  --conf "spark.executor.extraJavaOptions=-XX:+PrintGCDetails -XX:+PrintGCTimeStamps" myApp.jar
+
+Solution
+Case 1) Collect GC for Spark executor
+
+--conf "spark.executor.extraJavaOptions=-verbose:gc -XX:+PrintGCDetails -XX:+PrintGCTimeStamps”
+
+Case 2) Collect GC for Spark driver
+
+--conf "spark.driver.extraJavaOptions=-verbose:gc -XX:+PrintGCDetails -XX:+PrintGCTimeStamps”
+ 
+Case 3) Collect GC for NodeManager
+To collect GC for NodeManager, use the parameters shown below in /opt/mapr/hadoop/hadoop-2.7.0/etc/hadoop/yarn-env.sh
+
+export YARN_NODEMANAGER_OPTS="${YARN_NODEMANAGER_OPTS} ${MAPR_LOGIN_OPTS} -XX:+PrintGCDetails -XX:+PrintGC -XX:+PrintGCTimeStamps "
+
+
+Spark Troubleshooting guide: Profiling Spark: How to collect jstack for a known executor or driver process
+##########################################################################################################
+One useful utility to troubleshoot Java / JVM application-related issues is jstack. A jstack thread dump is a list of all the Java threads that are currently active in a Java Virtual Machine (JVM). The jstack command-line utility attaches to the specified process or core file and prints the stack traces of all threads that are attached to the virtual machine, including Java threads and VM internal threads, and optionally native stack frames. The utility also performs deadlock detection
+
+jstack tool is shipped in JDK_HOME bin folder. Here is the command that you need to issue to capture thread dump: jstack -l <pid> > <file-path> where. pid: is the Process Id of the application, whose thread dump should be captured.
+
+To get process id use the below command
+-----------------------------------------
+ ps -ef | grep -i parser.py - Here parser.py is name of the spark application
+
+Solution
+Case 1) Collect jstack using the PID of your Spark driver/executor Java process
+
+jstack <PID>
+ 
+Case 2) If the jstack pid command does not respond because of a hung process, then the -F option can be used (on Oracle Solaris and Linux operating systems only) to force a stack dump, as shown in the example below for any known driver / executor process PID
+
+jstack -F <PID>
+ 
+For troubleshooting situations needing MapR Tech Support's assistance, we recommend you run these diagnostics and submit the logs along with a Tech Support case. This typically expedites a value-added initial response from the Support. 

@@ -1,0 +1,61 @@
+functional style code vs imperative-style code
+----------------------------------------------
+
+The functional style can help you write more understandable, less error-prone code.
+
+
+if code contains any vars, it is probably in an imperative style. If the code contains no vars at all —i.e., it contains only vals—it is probably in a functional style.
+
+#######################################
+
+def add(b: Byte): Unit = {
+b = 1 // This won’t compile, because b is a val
+sum += b
+} 
+
+you can express them using a more concise style. First, the return at the end of the checksum method is superfluous and can be dropped. In the absence of any explicit return statement, a Scala method returns the last value computed by the method.
+
+#######################################
+
+
+
+Scala’s if statement can result in a value.Without this facility, the programmer must create temporary variables just to hold results that are calculated inside a control structure
+
+Impertive style below
+---------------------
+var filename = "default.txt"
+if (!args.isEmpty)
+filename = args(0)
+
+This code can be written more nicely,if is an expression that results in a value.
+
+Functional style code below 
+---------------------------
+val filename =
+if (!args.isEmpty) args(0)
+else "default.txt"
+
+################################################################
+
+Impertive style below
+---------------------
+
+for (file <- filesHere)
+ if (file.getName.endsWith(".scala"))
+   println(file)
+
+Functional style code below 
+---------------------------
+for ( file <- filesHere if file.isFile if file.getName.endsWith(".scala"))
+ println(file)
+
+################################################################
+val firstArg = if (args.length > 0) args(0) else ""
+firstArg match {
+case "salt" => println("pepper")
+case "chips" => println("salsa")
+case "eggs" => println("bacon")
+case _ => println("huh?")
+}
+
+Another difference is that there are no breaks at the end of each alternative. Instead the break is implicit, and there is no fall through from one alternative to the next. The common case—not falling through—becomes shorter, and a source of errors is avoided because programmers can no longer fall through by accident.

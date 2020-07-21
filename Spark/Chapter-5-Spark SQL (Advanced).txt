@@ -1,0 +1,1643 @@
+Aggregations
+------------
+Aggregations usually require some form of grouping either on the entire dataset or on one or more columns, and then they apply aggregation functions such as summing, counting, or averaging to each group.
+
+The grouping of rows can be done at different levels, and Spark supports the following levels:
+• Treat a DataFrame as one group.
+• Divide a DataFrame into multiple groups by using one or more columns and perform one or more aggregations on each of those groups.
+• Divide a DataFrame into multiple windows and perform moving average, cumulative sum, or ranking. If a window is based on time, the aggregations can be done with tumbling or sliding windows.
+
+Aggregation Functions
+---------------------
+In Spark, all aggregations are done via functions. The aggregation functions are designed to perform aggregation on a set of rows, whether that set of rows consists of all the rows or a subgroup of rows in a DataFrame.
+
+Common Aggregation Functions
+----------------------------
+This section describes a set of commonly used aggregation functions and provides examples of working with them.
+
+Operation 		Description
+------------------------------------
+count(col) 		Returns the number of items per group.
+countDistinct(col) 	Returns the unique number of items per group.
+approx_count_
+distinct(col)		Returns the approximate number of unique items per group.
+min(col) 		Returns the minimum value of the given column per group.
+max(col) 		Returns the maximum value of the given column per group.
+sum(col) 		Returns the sum of the values in the given column per group.
+sumDistinct(col) 	Returns the sum of the distinct values of the given column per group.
+avg(col) 		Returns the average of the values of the given column per group.
+skewness(col) 		Returns the skewness of the distribution of the values of the given column per group.
+kurtosis(col) 		Returns the kurtosis of the distribution of the values of the given column per group.
+variance(col) 		Returns the unbiased variance of the values of the given column per group.
+stddev(col) 		Returns the standard deviation of the values of the given column per group.
+collect_list(col) 	Returns a collection of values of the given column per group. The returned collection may contain duplicate values.
+collect_set(col) 	Returns a collection of unique values per group.
+
+To demonstrate the usage of these functions, we are going to use the flight summary dataset, which is derived from the data files available on the Kaggle site (https://www.kaggle.com/usdot/flight-delays/data).
+
+Creating a DataFrame by Reading a Flight Summary Dataset
+
+val flight_summary = spark.read.format("csv").option("header", "true").option("inferSchema","true").load("<path>/chapter5/data/flights/flight-summary.csv")
+// use count action to find out number of rows in this data set
+flight_summary.count()
+Long = 4693
+
+Remember that the count() function of the DataFrame is an action, so it immediately returns a value. All the functions listed above are lazily evaluated
+functions. The following is the schema of the flight_summary dataset:
+
+The following is the schema of the flight_summary dataset:
+|-- origin_code: string (nullable = true)
+|-- origin_airport: string (nullable = true)
+|-- origin_city: string (nullable = true)
+|-- origin_state: string (nullable = true)
+|-- dest_code: string (nullable = true)
+|-- dest_airport: string (nullable = true)
+|-- dest_city: string (nullable = true)
+|-- dest_state: string (nullable = true)
+|-- count: integer (nullable = true)
+
+Each row represents the flights from origin_airport to dest_airport. The count column contains the number of flights.
+
+count(col)
+----------
+Counting is a commonly used aggregation to find out the number of items in a group. Below code computes the count for both the origin_airport and dest_airport
+columns, and as expected, the count is the same.
+
+flight_summary.select(count("origin_airport"), count("dest_airport").as("dest_count")).show
++----------------------+-----------+
+| count(origin_airport)| dest_count|
++----------------------+-----------+
+| 4693			| 4693|
++----------------------+-----------+
+
+When counting the number of items in a column, the count(col) function doesn’t include the null value in the count. To include the null value, the column name should
+be replaced with *. Please see the below code
+
+import org.apache.spark.sql.Row
+case class Movie(actor_name:String, movie_title:String, produced_year:Long)
+
+val badMoviesDF = Seq( Movie(null, null, 2018L),
+Movie("John Doe", "Awesome Movie", 2018L),
+Movie(null, "Awesome Movie", 2018L),
+Movie("Mary Jane", "Awesome Movie", 2018L)).toDF
+
+badMoviesDF.show
++----------+--------------+--------------+
+|actor_name| movie_title| produced_year|
++----------+--------------+--------------+
+| null		| null| 2018|
+| John Doe	| Awesome Movie| 2018|
+| null		| Awesome Movie| 2018|
+| Mary Jane	| Awesome Movie| 2018|
++----------+--------------+--------------+
+
+// now performing the count aggregation on different columns
+badMoviesDF.select(count("actor_name"), count("movie_title"),count("produced_year"), count("*")).show
++------------------+-------------------+---------------------+---------+
+| count(actor_name)| count(movie_title)| count(produced_year)| count(1)|
++------------------+-------------------+---------------------+---------+
+| 2		| 3			| 4			| 4|
++------------------+-------------------+---------------------+---------+
+The above output table confirms that the count(col) function doesn’t include null in the final count.
+
+countDistinct(col)
+------------------
+This function does what it sounds like. It counts only the unique items per group. Below shows the difference in the count result between the countDistinct
+function and the count function.
+
+flight_summary.select(countDistinct("origin_airport"), countDistinct("dest_airport"), count("*")).show
++-------------------------------+-----------------------------+---------+
+| count(DISTINCT origin_airport)| count(DISTINCT dest_airport)| count(1)|
++-------------------------------+-----------------------------+---------+
+| 322				| 322				| 4693|
++-------------------------------+-----------------------------+---------+
+
+approx_count_distinct (col, max_estimated_error=0.05)
+-----------------------------------------------------
+Counting the exact number of unique items in each group in a large dataset is an expensive and time-consuming operation. In some use cases, it is sufficient to have
+an approximate unique count. One of those use cases is in the online advertising business where there are hundreds of millions of ad impressions per hour and there is
+a need to generate a report to show the number of unique visitors per certain type of member segment.
+
+Approximating a count of distinct items is a well-known problem in the computer science field, and it is also known as the cardinality estimation problem.Luckily, there is already a well-known algorithm called HyperLogLog that you can use to solve this problem, and Spark has implemented a version of this algorithm inside the approx_count_distinct function. Since the unique count is an approximation, there will be a certain amount of error.
+
+Counting Unique Items in a Group
+// let's do the counting on the "count" colum of flight_summary DataFrame.
+// the default estimation error is 0.05 (5%)
+flight_summary.select(count("count"),countDistinct("count"), approx_count_distinct("count", 0.05)).show
+
++--------------+----------------------+-----------------------------+
+| count(count) | count(DISTINCT count)| approx_count_distinct(count)|
++--------------+----------------------+-----------------------------+
+| 4693		| 2033			| 2252|
++--------------+----------------------+-----------------------------+
+// to get a sense how much approx_count_distinct function is faster than
+countDistinct function,
+// trying calling them separately
+flight_summary.select(countDistinct("count")).show
+
+// specify 1% estimation error
+flight_summary.select(approx_count_distinct("count", 0.01)).show
+
+On my Mac laptop, the approx_count_distinct function took about 0.1 second, and the countDistinct function took 0.6 second. The larger the approximation estimation
+error, the less time the approx_count_distinct function takes to complete.
+
+min(col), max(col)
+------------------
+The minimum value and maximum value of the items in a group are the two ends of a spectrum. These two functions are fairly easy to understand and work with
+
+Getting the Minimum and Maximum Values of the count Column 
+
+flight_summary.select(min("count"), max("count")).show
++-----------+-----------+
+| min(count)| max(count)|
++-----------+-----------+
+| 1	| 13744|
++-----------+-----------+
+
+// looks like there is one very busy airport with 13744 incoming flights from another airport. It will be interesting to find which airport.
+
+sum(col)
+--------
+This function computes the sum of the values in a numeric column
+
+Using the sum Function to Sum Up the count Values
+
+flight_summary.select(sum("count")).show
++-----------+
+| sum(count)|
++-----------+
+| 5332914|
++-----------+
+
+sumDistinct(col)
+----------------
+This function does what it sounds like. It sums up only the distinct values of a numeric column. The sum of the distinct counts in the flight_summary DataFrame should be less than the total sum displayed
+
+flight_summary.select(sumDistinct("count")).show
++--------------------+
+| sum(DISTINCT count)|
++--------------------+
+| 3612257|
++--------------------+
+
+avg(col)
+--------
+This function calculates the average value of a numeric column. This convenient function simply takes the total and divides it by the number of items.
+
+Computing the Average Value of the count Column Using Two Different Ways
+
+flight_summary.select(avg("count"), (sum("count") / count("count"))).show
++-------------------+----------------------------+
+| avg(count)		| (sum(count) / count(count))|
++-------------------+----------------------------+
+| 1136.3549968037503	| 1136.3549968037503|
++-------------------+----------------------------+
+
+skewness(col), kurtosis(col)
+---------------------------
+In the field of statistics, the distribution of the values in a dataset tells a lot of stories behind the dataset. Skewness is a measure of the symmetry of the value distribution in a dataset. In a normal distribution or bell-shaped distribution, the skew value is 0. Positive skew indicates the tail on the right side is longer or fatter than the left side. Negative skew indicates the opposite, where the tail of the left side is longer or fatter than the right side.The tail of both sides is even when the skew is 0.
+
+Kurtosis is a measure of the shape of the distribution curve, whether the curve is normal, flat, or pointy. Positive kurtosis indicates the curve is slender and pointy, and negative kurtosis indicates the curve is fat and flat.
+
+Computing the Skewness and Kurtosis of the column Count
+flight_summary.select(skewness("count"), kurtosis("count")).show
++------------------+------------------+
+| skewness(count)| kurtosis(count)|
++------------------+------------------+
+| 2.682183800064101| 10.51726963017102|
++------------------+------------------+
+
+The result seems to suggest the distribution of the counts is not symmetric and the right tail is longer or fatter than the left tail. The kurtosis value suggests that the distribution curve is pointy
+
+variance(col), stddev(col)
+---------------------------
+In statistics, variance and standard deviation are used to measure the dispersion, or the spread, of the data. In other words, they are used to tell the average distance of the values from the mean. When the variance value is low, it means the values are close to the mean. Variance and standard deviation are related; the latter is the square root of the former.
+
+The variance and stddev functions are used to calculate the variance and standard deviation, respectively. Spark provides two different implementations of these functions;one uses sampling to speed up the calculation, and the other uses the entire population.
+
+Computing the Variance and Standard Deviation Using the variance and sttdev Functions
+
+// use the two variations of variance and standard deviation
+flight_summary.select(variance("count"), var_pop("count"), stddev("count"), stddev_pop("count")).show
++-----------------+------------------+------------------+-----------------+
+| var_samp(count)| var_pop(count)|stddev_samp(count)|stddev_pop(count)|
++-----------------+------------------+------------------+-----------------+
+|1879037.7571558713|1878637.3655604832| 1370.779981308405| 1370.633928355957|
++-----------------+------------------+------------------+-----------------+
+
+It looks like the count values are pretty spread out in the flight_summary DataFrame.
+
+Aggregation with Grouping
+-------------------------
+The aggregations are usually performed on datasets that contain one or more categorical columns, which have low cardinality. Examples of categorical values are gender, age, city name, or country name.
+
+The aggregations will be done through the functions that are similar to the ones mentioned earlier. However, instead of performing aggregation on the global
+group in a DataFrame, they will perform the aggregation on each of the subgroups inside a DataFrame.
+
+Performing aggregation with grouping is a two-step process. The first step is to perform the grouping by using the groupBy(col1,col2,...) transformation, and that’s
+where you specify which columns to group the rows by. Unlike other transformations that return a DataFrame, the groupBy transformation returns an instance of the
+RelationalGroupedDataset class, which you then can apply one or more aggregation functions to.
+
+Grouping by origin_airport and Performing a count Aggregation
+
+flight_summary.groupBy("origin_airport").count().show(5, false)
+
++--------------------------------------------------+------+
+| origin_airport | count|
++--------------------------------------------------+------+
+|Melbourne International Airport 		| 1|
+|San Diego International Airport (Lindbergh Field) | 46|
+|Eppley Airfield 				| 21|
+|Kahului Airport 				| 18|
+|Austin-Bergstrom International Airport 	| 41|
++--------------------------------------------------+------+
+The previous result table tells you that the flights going out of the Melbourne International Airport (Florida) are going to only one other airport. However, the flights going out of the Kahului Airport can land at one of the 18 other airports.
+
+To make things a bit more interesting, let’s trying grouping by two columns to calculate the same metric at the city level.
+
+Grouping by origin_state and origin_city and Performing a Count Aggregation
+
+flight_summary.groupBy('origin_state, 'origin_city).count.where('origin_state === "CA").orderBy('count.desc).show(5)
++-------------+-----------------+-------+
+| origin_state| origin_city| count|
++-------------+-----------------+-------+
+| CA		| San Francisco| 80|
+| CA		| Los Angeles| 80|
+| CA		| San Diego| 47|
+| CA		| Oakland| 35|
+| CA		| Sacramento| 27|
++-------------+-----------------+-------+
+
+The class RelationalGroupedDataset provides a standard set of aggregation functions that you can apply to each subgroup. They are avg(cols), count(), mean(cols), min(cols), max(cols), and sum(cols). Except for the count() function, all the remaining ones operate on numeric columns.
+
+Multiple Aggregations per Group
+-------------------------------
+Sometimes there is a need to perform multiple aggregations per group at the same time. For example, in addition to the count, you also would like to know the minimum and maximum values. The RelationalGroupedDataset class provides a powerful function called agg that takes one or more column expressions, which means you can use any of the aggregation functions.
+
+One cool thing is these aggregation functions return an instance of the Column class so you can then apply any of the column expressions using the provided functions. A common need is to rename the column after the aggregation is done to make it shorter, more readable, and easier to refer to.
+
+Multiple Aggregations After Grouping by origin_airport
+
+import org.apache.spark.sql.functions._
+
+flight_summary.groupBy("origin_airport")
+.agg(
+	count("count").as("count"),
+	min("count"), max("count"),
+	sum("count")
+).show(5)
++--------------------+------+-----------+-----------+-----------+
+| origin_airport	| count| min(count)| max(count)| sum(count)|
++--------------------+------+-----------+-----------+-----------+
+|Melbourne Interna...	| 1| 1332	| 1332	| 1332	|
+|San Diego Interna...	| 46|4		| 6942	| 70207	|	
+| Eppley Airfield	| 21|1		| 2083	| 16753	|
+| Kahului Airport	| 18| 67	| 8313	| 20627	|
+|Austin-Bergstrom ...	| 41| 8		| 4674	| 42067|
++--------------------+------+-----------+-----------+-----------+
+
+By default the aggregation column name is the aggregation expression, which makes the column name a bit long and not easy to refer to. A common pattern is to use the
+Column.as function to rename the column to something more suitable.
+
+The versatile agg function provides an additional way to express the column expressions via a string-based key-value map. The key is the column name, and the value
+is an aggregation function, which can be avg, max, min, sum, or count.
+
+Specifying Multiple Aggregations Using a Key-Value Map
+flight_summary.groupBy("origin_airport")
+.agg(
+"count" -> "count",
+"count" -> "min",
+"count" -> "max",
+"count" -> "sum")
+.show(5)
+
+Notice there isn’t an easy way to rename the aggregation result column name. One advantage this approach has over the first one is the map can programmatically be generated. When writing production ETL jobs or performing exploratory analysis, the first approach is used more often than the second one.
+
+Collection Group Values
+-----------------------
+The functions collect_list(col) and collect_set(col) are useful for collecting all the values of a particular group after the grouping is applied.
+
+There is one small difference between the returned collection of these two functions, which is the uniqueness. The collection_list function returns a collection that may contain duplicate values, and the collection_set function returns a collection that contains only unique values.
+
+Using collection_list to Collect High-Traffic Destination Cities per Origin State
+
+val highCountDestCities = flight_summary.where('count > 5500)
+	.groupBy("origin_state")
+	.agg(collect_list("dest_city").
+	as("dest_cities"))
+
+highCountDestCities.withColumn("dest_city_count", size('dest_cities)).show(5, false)
+
++-------------+--------------------------------------+----------------+
+| origin_state| dest_cities 				| dest_city_count|
++-------------+--------------------------------------+----------------+
+| AZ		| [Seattle, Denver, Los Angeles] 	| 3|
+| LA		| [Atlanta] 				| 1|
+| MN		| [Denver, Chicago] 			| 2|
+| VA		| [Chicago, Boston, Atlanta] 		| 3|
+| NV		| [Denver, Los Angeles, San Francisco]	| 3|
++-------------+--------------------------------------+----------------+
+
+Aggregation with Pivoting
+-------------------------
+Pivoting is a way to summarize the data by specifying one of the categorical columns and then performing aggregations on another columns such that the categorical
+values are transposed from rows into individual columns. Another way of thinking about pivoting is that it is a way to translate rows into columns while applying one or more aggregations.
+
+This technique is commonly used in data analysis or reporting.The pivoting process starts with the grouping of one or more columns, then pivots on a column, and finally ends with applying one or more aggregations on one or more columns.
+
+Pivoting on a Small Dataset
+
+import org.apache.spark.sql.Row
+
+case class Student(name:String, gender:String, weight:Int, graduation_year:Int)
+
+val studentsDF = Seq(Student("John", "M", 180, 2015),
+		Student("Mary", "F", 110, 2015),
+		Student("Derek", "M", 200, 2015),
+		Student("Julie", "F", 109, 2015),
+		Student("Allison", "F", 105, 2015),
+		Student("kirby", "F", 115, 2016),
+		Student("Jeff", "M", 195, 2016)).toDF
+
+// calculating the average weight for each gender per graduation year
+studentsDF.groupBy("graduation_year").pivot("gender").avg("weight").show()
++----------------+------+------+
+| graduation_year| F| M|
++----------------+------+------+
+| 2015		| 108.0| 190.0|
+| 2016		| 115.0| 195.0|
++----------------+------+------+
+
+The previous example has one aggregation, and the gender categorical column has only two possible unique values; therefore, the result table has only two columns. 
+
+If the gender column has three possible unique values, then there will be three columns in the result table. You can leverage the agg function to perform multiple aggregations, which will create more columns in the result table.
+
+Multiple Aggregations After Pivoting
+
+studentsDF.groupBy("graduation_year").pivot("gender")
+	.agg(
+		min("weight").as("min"),
+		max("weight").as("max"),
+		avg("weight").as("avg")
+	).show()
++---------------+------+------+------+------+------+------+
+|graduation_year| F_min	| F_max	| F_avg| M_min| M_max| M_avg|
++---------------+------+------+------+------+------+------+
+| 2015		| 105	| 110	| 108.0| 180| 200| 190.0|
+| 2016		| 115	| 115	| 115.0| 195| 195| 195.0|
++---------------+------+------+------+------+------+------+
+
+The number of columns added after the group columns in the result table is the product of the number of unique values of the pivot column and the number of
+aggregations.
+
+If the pivoting column has a lot of distinct values, you can selectively choose which values to generate the aggregations for.
+
+Selecting Which Values of Pivoting Columns to Generate the
+Aggregations For
+studentsDF.groupBy("graduation_year").pivot("gender", Seq("M"))
+.agg(
+min("weight").as("min"),
+max("weight").as("max"),
+avg("weight").as("avg")
+).show()
++----------------+------+------+------+
+| graduation_year| M_min| M_max| M_avg|
++----------------+------+------+------+
+| 2015		| 180	| 200| 190.0|
+| 2016		| 195	| 195| 195.0|
++----------------+------+------+------+
+
+Specifying a list of distinct values for the pivot column actually will speed up the pivoting process. Otherwise, Spark will spend some effort in figuring out a list of distinct values on its own.
+
+Joins
+-----
+
+you often need to bring together the data from multiple datasets through the process of 
+
+Join Expressions and Join Types
+-------------------------------
+Performing a join of two datasets requires you to specify two pieces of information. The first one is a join expression that specifies which columns from each dataset should be used to determine which rows from both datasets will be included in the joined dataset.
+
+The second one is the join type, which determines what should be included in the joined dataset.
+
+Join Types
+-----------
+Type 				Description
+-------------------------------------------
+Inner join(aka equi-join) 	Returns rows from both datasets when the join expression evaluates to true.
+Left outer join 		Returns rows from the left dataset even when the join expression evaluates to false.
+Right outer join 		Returns rows from the right dataset even when the join expression evaluates to false.
+Outer join 			Returns rows from both datasets even when the join expression evaluates to false.
+Left anti join 			Returns rows only from the left dataset when the join expression evaluates to false.
+Left semi join 			Returns rows only from the left dataset when the join expression evaluates to true.
+Cross(aka Cartesian) 		Returns rows by combining each row from the left dataset with each row in the
+				right dataset. The number of rows will be a product of the size of each dataset.
+
+Please see the Venn diagram in PDF
+
+Working with Joins
+------------------
+To demonstrate how to perform joining in Spark SQL, I’ll use two small DataFrames. The first one represents a list of employees, and each row contains the employee name and the department they belong to. The second one contains a list of departments, and each row contains a department ID and department name.
+
+Creating Two Small DataFrames to Use in the Following Join Type Examples
+
+case class Employee(first_name:String, dept_no:Long)
+
+val employeeDF = Seq( Employee("John", 31),
+Employee("Jeff", 33),
+Employee("Mary", 33),
+Employee("Mandy", 34),
+Employee("Julie", 34),
+Employee("Kurt", null.asInstanceOf[Int])
+).toDF
+
+case class Dept(id:Long, name:String)
+val deptDF = Seq( Dept(31, "Sales"),
+Dept(33, "Engineering"),
+Dept(34, "Finance"),
+Dept(35, "Marketing")
+).toDF
+
+// register them as views so we can use SQL for perform joins
+employeeDF.createOrReplaceTempView("employees")
+deptDF.createOrReplaceTempView("departments")
+
+Inner Joins
+-----------
+The joined dataset will contain the rows only when the join expression evaluates to true, in other words, when the join column values are the same in both datasets.
+
+Rows that don’t have matching column values will be excluded from the joined dataset. If the join expression is using the equality comparison, then the number of rows in the joined table will only be as large as the size of the smaller dataset.
+
+In Spark SQL, the inner join is the default join type, so it is optional to specify it in the join transformation.
+
+Performing an Inner Join by the Department ID
+
+// define the join expression of equality comparison
+val deptJoinExpression = employeeDF.col("dept_no") === deptDF.col("id")
+
+// perform the join
+employeeDF.join(deptDF, joinExpression, "inner").show
+
+// no need to specify the join type since "inner" is the default
+employeeDF.join(deptDF, joinExpression).show
+
++----------+--------+---+------------+
+|first_name	| dept_no| id| name|
++----------+--------+---+------------+
+| John		| 31| 31| Sales|
+| Jeff		| 33| 33| Engineering|
+| Mary		| 33| 33| Engineering|
+| Mandy		| 34| 34| Finance|
+| Julie		| 34| 34| Finance|
++----------+--------+---+------------+
+
+// using SQL
+spark.sql("select * from employees JOIN departments on dept_no == id").show
+
+As expected, the joined dataset contains only the rows with matching department IDs from both the employee and department datasets and the columns from both
+datasets. The output tells you exactly which department each employee belongs to.
+
+The join expression can be specified inside the join transformation or using the where transformation. It is possible to refer to the columns in the join expression using a short-handed version if the column names are unique.
+
+Different Ways of Expressing a Join Expression
+
+// a shorter version of the join expression
+employeeDF.join(deptDF, 'dept_no === 'id).show
+
+// specify the join expression inside the join transformation
+employeeDF.join(deptDF, employeeDF.col("dept_no") === deptDF.col("id")).show
+
+// specify the join expression using the where transformation
+employeeDF.join(deptDF).where('dept_no === 'id).show
+
+
+Left Outer Joins
+----------------
+The joined dataset of this join type includes all the rows from an inner join plus all the rows from the left dataset that the join expression evaluates to false. For those nonmatching rows, it will fill in a NULL value for the columns of the right dataset.
+
+The above statement might be confusing, so use your own statement
+
+Performing a Left Outer Join
+
+// the join type can be either "left_outer" or "leftouter"
+employeeDF.join(deptDF, 'dept_no === 'id, "left_outer").show
+
+// using SQL
+spark.sql("select * from employees LEFT OUTER JOIN departments on dept_no== id").show
++-----------+--------+-----+------------+
+| first_name	| dept_no| id| name|
++-----------+--------+-----+------------+
+| John		| 31| 31| Sales|
+| Jeff		| 33| 33| Engineering|
+| Mary		| 33| 33| Engineering|
+| Mandy		| 34| 34| Finance|
+| Julie		| 34| 34| Finance|
+| Kurt		| 0| null| null|
++-----------+--------+-----+------------+
+
+As expected, the number of rows in the joined dataset is the same as the number of rows in the employee DataFrame. Since there is no matching department with an
+ID value of 0, it fills in a NULL value for that row. The result of this particular left outer join enables you to tell which department an employee is assigned to as well as which employees are not assigned to a department.
+
+Right Outer Joins
+-----------------
+In other words, the joined dataset includes all the rows from an inner join plus all the rows from the right dataset that the join expression evaluates to false. For those nonmatching rows, it will fill in a NULL value for the columns of the left dataset. 
+
+Performing a Right Outer Join
+employeeDF.join(deptDF, 'dept_no === 'id, "right_outer").show
+
+// using SQL
+spark.sql("select * from employees RIGHT OUTER JOIN departments on dept_no== id").show
++-----------+--------+----+------------+
+| first_name	| dept_no| id| name|
++-----------+--------+----+------------+
+| John		| 31| 31| Sales|
+| Mary		| 33| 33| Engineering|
+| Jeff		| 33| 33| Engineering|
+| Julie		| 34| 34| Finance|
+| Mandy		| 34| 34| Finance|
+| null		| null| 35| Marketing|
++-----------+--------+----+------------+
+
+As expected, the marketing department doesn’t have any matching rows from the employee dataset. The joined dataset tells you the department an employee is assigned
+to as well as which departments have no employees.
+
+Outer Joins (aka Full Outer Joins)
+----------------------------------
+The behavior of this join type is effectively the same as combining the result of both the left outer join and the right outer join.
+
+Performing an Outer Join
+employeeDF.join(deptDF, 'dept_no === 'id, "outer").show
+// using SQL
+spark.sql("select * from employees FULL OUTER JOIN departments on dept_no == id").show
++-----------+--------+-----+------------+
+| first_name| dept_no| id| name|
++-----------+--------+-----+------------+
+| Kurt	| 0| null| null|
+| Mandy | 34| 34| Finance|
+| Julie | 34| 34| Finance|
+| John  | 31| 31| Sales|
+| Jeff  | 33| 33| Engineering|
+| Mary	| 33| 33| Engineering|
+| null	| null| 35| Marketing|
++-----------+--------+-----+------------+
+The result from the outer join allows you to see not only which department an employee is assigned to and which departments have employees but also which
+employees are not assigned to a department and which departments don’t have any employees.
+
+Left Anti-Joins
+---------------
+This join type enables you to find out which rows from the left dataset don’t have any matching rows on the right dataset, and the joined dataset will contain only the columns from the left dataset.
+
+Performing a Left Anti-Join
+
+employeeDF.join(deptDF, 'dept_no === 'id, "left_anti").show
+
+// using SQL
+spark.sql("select * from employees LEFT ANTI JOIN departments on dept_no == id").show
+
++----------+--------+
+|first_name| dept_no|
++----------+--------+
+| Kurt	   | 	0|
++----------+--------+
+
+The result from the left anti-join can easily tell you which employees are not assigned to a department. Notice the right anti-join type doesn’t exist; however, you can easily switch the datasets around to achieve the same goal.
+
+Left Semi-Joins
+----------------
+The behavior of this join type is similar to the inner join type, except the joined dataset doesn’t include the columns from the right dataset. Another way of thinking about this join type is its behavior is the opposite of the left anti-join, where the joined dataset contains only the matching rows.
+
+Performing a Left Semi-Join
+employeeDF.join(deptDF, 'dept_no === 'id, "left_semi").show
+
+// using SQL
+spark.sql("select * from employees LEFT SEMI JOIN departments on dept_no == id").show
++-----------+--------+
+| first_name| dept_no|
++-----------+--------+
+| John| 31|
+| Jeff| 33|
+| Mary| 33|
+| Mandy| 34|
+| Julie| 34|
++-----------+--------+
+
+Cross (aka Cartesian)
+---------------------
+Its behavior can be a bit dangerous because it joins every single row in the left dataset with every row in the right dataset. The size of the joined dataset is the product of the size of the two datasets. For example, if the size of each dataset is 1,024, then the size of the joined dataset is more than 1 million rows. For this reason, the way to use this join type is by explicitly using a dedicated transformation in DataFrame, rather than specifying this join type as a string.
+
+Performing a Cross Join
+
+// using crossJoin transformation and display the count
+employeeDF.crossJoin(deptDF).count
+Long = 24
+
+// using SQL and to display up to 30 rows to see all rows in the joined dataset
+spark.sql("select * from employees CROSS JOIN departments").show(30)
++----------+--------+----+------------+
+|first_name| dept_no| id| name|
++----------+--------+----+------------+
+| John| 31| 31| Sales|
+| John| 31| 33| Engineering|
+| John| 31| 34| Finance|
+| John| 31| 35| Marketing|
+| Jeff| 33| 31| Sales|
+| Jeff| 33| 33| Engineering|
+| Jeff| 33| 34| Finance|
+| Jeff| 33| 35| Marketing|
+| Mary| 33| 31| Sales|
+| Mary| 33| 33| Engineering|
+| Mary| 33| 34| Finance|
+| Mary| 33| 35| Marketing|
+| Mandy| 34| 31| Sales|
+| Mandy| 34| 33| Engineering|
+| Mandy| 34| 34| Finance|
+| Mandy| 34| 35| Marketing|
+| Julie| 34| 31| Sales|
+| Julie| 34| 33| Engineering|
+| Julie| 34| 34| Finance|
+| Julie| 34| 35| Marketing|
+| Kurt| 0| 31| Sales|
+| Kurt| 0| 33| Engineering|
+| Kurt| 0| 34| Finance|
+| Kurt| 0| 35| Marketing|
++----------+--------+----+------------+
+
+Dealing with Duplicate Column Names
+-----------------------------------
+Sometimes there is an unexpected issue that comes up after joining two DataFrames with one or more columns that have the same name. When this happens, the joined
+DataFrame would have multiple columns with the same name. In this situation, it is not easy to refer to one of those columns while performing some kind of transformation on the joined DataFrame.
+
+Simulating a Joined DataFrame with Multiple Column Names That Are the Same
+
+// add a new column to deptDF with name dept_no
+val deptDF2 = deptDF.withColumn("dept_no", 'id)
+
+deptDF2.printSchema
+|-- id: long (nullable = false)
+|-- name: string (nullable = true)
+|-- dept_no: long (nullable = false)
+
+// now employeeDF with deptDF2 using dept_no column
+val dupNameDF = employeeDF.join(deptDF2, employeeDF.col("dept_no") === deptDF2.col("dept_no"))
+
+dupNameDF.printSchema
+|-- first_name: string (nullable = true)
+|-- dept_no: long (nullable = false)
+|-- id: long (nullable = false)
+|-- name: string (nullable = true)
+|-- dept_no: long (nullable = false)
+
+Notice the dupNameDF DataFrame now has two columns with the same name, dept_no. Spark will throw an error when you try to project the dupNameDF DataFrame using
+dept_no 
+
+Projecting the Column dept_no in the dupNameDF DataFrame
+
+dupNameDF.select("dept_no")
+
+org.apache.spark.sql.AnalysisException: Reference 'dept_no' is ambiguous,
+could be: dept_no#30L, dept_no#1050L.;
+
+As it turns out, there are several ways to deal with this issue
+
+Use the Original DataFrame
+--------------------------
+To disambiguate which DataFrame a particular column comes from, you can just tell Spark to prefix it with its original DataFrame name.
+
+Using the Original DataFrame deptDF2 to Refer to the dept_no Column in the Joined DataFrame
+
+Renaming Column Before Joining
+-------------------------------
+To avoid the previous column name ambiguity issue, another approach is to rename a column in one of the DataFrames using the withColumnRenamed transform. Since this is
+simple, I will leave it as an exercise for you.
+
+Using a Joined Column Name
+-------------------------
+In the case when the joined column name is the same in both DataFrames, you can leverage a version of the join transformation that automatically removes the duplicate
+column name from the joined DataFrame. However, if this were a self-join, meaning joining a DataFrame to itself, then there is no way to refer to other duplicate column names. In that case, you would need to use the first technique to rename the columns of one of the DataFrames.
+
+dupNameDF.select(deptDF2.col("dept_no"))
+
+Performing a Join Using a Joined Column Name
+
+val noDupNameDF = employeeDF.join(deptDF2, "dept_no")
+noDupNameDF.printSchema
+|-- dept_no: long (nullable = false)
+|-- first_name: string (nullable = true)
+|-- id: long (nullable = false)
+|-- name: string (nullable = true)
+
+Overview of a Join Implementation
+---------------------------------
+Must see the implementaion in PDF
+
+Functions
+---------
+If we would like to transform the value of a column of each row in a data set, such as converting a string from upper case to camel case, then we would use a function to do that. Functions are basically methods that are applied to columns.
+
+Working with Built-in Functions
+--------------------------------
+Built-in functions are designed to generate optimized code for execution at runtime, so it is best to take advantage of them before trying to come up with your own functions. One commonality among these functions is they are designed to take one or more columns of the same row as the input, and they return only a single column as the output.
+
+Spark SQL provides more than 200 built-in functions, and they are grouped into different categories. These functions can be used inside DataFrame operations, such as select, filter, groupBy, and so on.
+
+A Subset of Built-in Functions for Each Category
+
+Category 		Description
+------------------------------------
+Date time 		unix_timestamp, from_unixtime, to_date, current_date, current_
+			timesatmp, date_add, date_sub, add_months, datediff, months_
+			between, dayofmonth, dayofyear, weekofyear, second, minute, hour,month
+
+String 			concat, length, levenshtein, locate, lower, upper, ltrim, rtrim, trim,
+			lpad, rpad, repeat, reverse, split, substring, base64
+
+Math 			cos, acos, sin, asin, tan, atan, ceil, floor, exp, factorial, log, pow,
+			radian, degree, sqrt, hex, unhex
+
+Cryptography 		cr32, hash, md5, sha1, sha2
+
+Aggregation 		approx._count_distinct, countDistinct, sumDistinct, avg, corr,
+			count, first, last, max, min, skewness, sum
+
+Collection 		array_contain, explode, from_json, size, sort_array, to_json, size
+			Window dense_rank, lag, lead, ntile, rank, row_number
+
+Miscellaneous 		coalesce, isNan, isnull, isNotNull, monotonically_increasing_id,lit, when
+
+Working with Date-Time Functions
+--------------------------------
+The Spark built-in date-time functions broadly fall into the following three categories: converting the date or timestamp from one format to another, performing date-time calculations, and extracting specific values from a date or timestamp.
+
+The date and time conversion functions help with converting a string into either a date, a timestamp, or a Unix time stamp, and vice versa. Internally it uses the Java date format pattern syntax.
+
+The default date format these functions use is yyyy-MM-dd HH:mm:ss. Therefore, if the date format of a date or timestamp column is different, then you need to provide that pattern to these conversion functions.
+
+Converting a date and timestamp in string type to Spark Date and Timestamp type.
+
+// the last two columns don't follow the default date format
+val testDateTSDF = Seq((1, "2018-01-01", "2018-01-01 15:04:58:865", "01-01-2018", "12-05-2017 45:50"))
+. toDF("id", "date", "timestamp","date_str", "ts_str")
+
+// convert these strings into date, timestamp and unix timestamp
+// and specify a custom date and timestamp format
+val testDateResultDF = testDateTSDF.select(to_date('date).as("date1")
+	,to_timestamp('timestamp).as("ts1")
+	,to_date('date_str,"MM-dd-yyyy").as("date2")
+	,to_timestamp('ts_str,"MM-dd-yyyy mm:ss").as("ts2")
+	,unix_timestamp('timestamp).as("unix_ts"))
+ .show(false)
+
+// date1 and ts1 are of type date and timestamp respectively
+testDateResultDF.printSchema
+|-- date1: date (nullable = true)
+|-- ts1: timestamp (nullable = true)
+|-- date2: date (nullable = true)
+|-- ts2: timestamp (nullable = true)
+|-- unix_ts: long (nullable = true)
+
+testDateResultDF.show
+
++---------+-------------------+----------+--------------------+-----------+
+| date1		| ts1		| date2		| ts2			| unix_ts|
++---------+-------------------+----------+--------------------+-----------+
+|2018-01-01| 2018-01-01 15:04:58| 2018-01-01	| 2017-12-05 00:45:50	| 1514847898|
++---------+-------------------+----------+--------------------+-----------+
+
+Converting a Date, Timestamp, and Unix Timestamp to a String
+
+testDateResultDF.select(date_format('date1, "dd-MM-YYYY").as("date_str")
+	,date_format('ts1, "dd-MM-YYYY HH:mm:ss").as("ts_str")
+	,from_unixtime('unix_ts,"dd-MM-YYYY HH:mm:ss").as("unix_ts_str"))
+.show
++-----------+--------------------+--------------------+
+| date_str	| ts_str		| unix_ts_str|
++-----------+--------------------+--------------------+
+| 01-01-2018	| 01-01-2018 15:04:58	| 01-01-2018 15:04:58|
++-----------+--------------------+--------------------+
+
+
+Date-Time Calculation Examples
+
+The date-time calculation functions are useful for figuring out the difference between two dates or timestamps as well as for performing date or time arithmetic.
+
+val employeeData = Seq( ("John", "2016-01-01", "2017-10-15"),
+			("May", "2017-02-06", "2017-12-25"))
+			.toDF("name", "join_date", "leave_date")
+
+employeeData.show
++-----+-----------+-----------+
+| name| join_date| leave_date|
++-----+-----------+-----------+
+| John| 2016-01-01| 2017-10-15|
+| May | 2017-02-06| 2017-12-25|
++-----+-----------+-----------+
+
+// perform date and month calcuations
+employeeData.select('name, datediff('leave_date, 'join_date).as("days")
+	,months_between('leave_date, 'join_date).as("months")
+	,last_day('leave_date).as("last_day_of_mon"))
+.show
++-----+-----+-----------+----------------+
+| name| days| months	| last_day_of_mon|
++-----+-----+-----------+----------------+
+| John| 653| 21.4516129| 2017-10-31|
+| May| 322 |10.61290323| 2017-12-31|
++-----+-----+-----------+----------------+
+
+// perform date addition and substration
+val oneDate = Seq(("2018-01-01")).toDF("new_year")
+
+oneDate.select(date_add('new_year, 14).as("mid_month")
+	,date_sub('new_year, 1).as("new_year_eve")
+	,next_day('new_year, "Mon").as("next_mon"))
+.show
++-----------+-------------+-----------+
+| mid_month| new_year_eve| next_mon|
++-----------+-------------+-----------+
+| 2018-01-15| 2017-12-31| 2018-01-08|
++-----------+-------------+-----------+
+
+For example, when there is a need to group all the stock transactions by quarter or month or week, then you can just extract that information from the transaction date and group by those values
+
+val valentimeDateDF = Seq(("2018-02-14 05:35:55")).toDF("date")
+valentimeDateDF.select(year('date).as("year"),
+	quarter('date).as("quarter"),
+	month('date).as("month"),
+	weekofyear('date).as("woy"),
+	dayofmonth('date).as("dom"),
+	dayofyear('date).as("doy"),
+	hour('date).as("hour"),
+	minute('date).as("minute"),
+	second('date).as("second"))
+.show
++-----+--------+------+----+----+----+-----+-------+-------+
+| year| quarter| month| woy| dom| doy| hour| minute| second|
++-----+--------+------+----+----+----+-----+-------+-------+
+| 2018| 1 	| 2  | 7   | 14 | 45  | 5  | 35	   | 55|
++-----+--------+------+----+----+----+-----+-------+-------+
+
+Working with String Functions
+-----------------------------
+There are many ways to transform a string. The most common ones are trimming, padding, uppercasing, lowercasing, and concatenating.
+
+Different Ways of Transforming a String with Built-in String Functions
+
+val sparkDF = Seq((" Spark ")).toDF("name")
+
+// trimming
+sparkDF.select(trim('name).as("trim"),ltrim('name).as("ltrim"),rtrim('name).as("rtrim")).show
+
++-----+------+------+
+| trim| ltrim| rtrim|
++-----+------+------+
+|Spark| Spark| Spark|
++-----+------+------+
+
+// padding a string to a specified length with given pad string
+// first trim spaces around string "Spark" and then pad it so the final
+length is 8 characters long
+
+sparkDF.select(trim('name).as("trim")).select(lpad('trim, 8, "-").as("lpad"),rpad('trim, 8, "=").as("rpad")).show
++--------+--------+
+| lpad	 | rpad|
++--------+--------+
+|---Spark|Spark===|
++--------+--------+
+
+// transform a string with concatenation, uppercase, lowercase and reverse
+val sparkAwesomeDF = Seq(("Spark", "is", "awesome")).toDF("subject","verb", "adj")
+sparkAwesomeDF.select(concat_ws(" ",'subject, 'verb, 'adj).as("sentence"))
+.select(lower('sentence).as("lower"),
+	upper('sentence).as("upper"),
+	initcap('sentence).as("initcap"),
+	reverse('sentence).as("reverse"))
+.show
++-----------------+-----------------+-----------------+-----------------+
+| lower		  | upper	    | initcap	      | reverse|
++-----------------+-----------------+-----------------+-----------------+
+| spark is awesome| SPARK IS AWESOME| Spark Is Awesome| emosewa si krapS|
++-----------------+-----------------+-----------------+-----------------+
+
+// translate from one character to another
+sparkAwesomeDF.select('subject, translate('subject, "ar", "oc").as("translate")).show
++--------+----------+
+| subject| translate|
++--------+----------+
+| Spark  | Spock |
++--------+----------+
+
+Regular expressions are a powerful and flexible way to replace some portion of a string or extract substrings from a string. The regexp_extract and regexp_replace
+functions are designed specifically for those purposes.
+
+Using the regexp_extract String Function to Extract “fox” Using a Pattern
+
+val rhymeDF = Seq(("A fox saw a crow sitting on a tree singing \"Caw! Caw! Caw!\"")).toDF("rhyme")
+
+// using a pattern
+rhymeDF.select(regexp_extract('rhyme, "[a-z]*o[xw]",0).as("substring")).show
++------------+
+| substring|
++------------+
+| fox	|
++------------+
+
+The input parameters to the regexp_replace string function are the string column, a pattern to match, and a value to replace with.
+
+Using the regexp_replace String Function to Replace “fox” and “crow” with “animal”
+
+val rhymeDF = Seq(("A fox saw a crow sitting on a tree singing \"Caw! Caw! Caw!\"")).toDF("rhyme")
+
+// both lines below produce the same output
+rhymeDF.select(regexp_replace('rhyme, "fox|crow", "animal").as("new_rhyme")).show(false)
+
+rhymeDF.select(regexp_replace('rhyme, "[a-z]*o[xw]", "animal").as("new_rhyme")).show(false)
++-------------------------------------------------------------------------+
+| new_rhyme |
++-------------------------------------------------------------------------+
+|A animal saw a animal sitting on a tree singing "Caw! Caw! Caw!" |
++-------------------------------------------------------------------------+
+
+Working with Math Functions
+---------------------------
+This section covers one very useful and commonly used function called round, which performs the half-up rounding of a numeric value based on a given scale. The scale determines the number of decimal points to round up to.
+
+Demonstrates the Behavior of round with Various Scales
+numberDF.select(round('pie).as("pie0"),
+round('pie, 1).as("pie1"),
+round('pie, 2).as("pie2"),
+round('gpa).as("gpa"),
+round('year).as("year"))
+.show
+
+// because it is a half-up rounding, the gpa value is rounded up to 4.0
++-----+------+-----+----+-----+
+| pie0| pie1| pie2| gpa| year|
++-----+------+-----+----+-----+
+| 3.0 | 3.1 | 3.14| 4.0| 2018|
++-----+------+-----+----+-----+
+
+Working with Collection Functions
+---------------------------------
+The collection functions are designed to work with complex data types such as arrays, maps, and structs. This section covers the two specific types of collection functions. The first is about working with the array datatype, and the second one is about working with the JSON data format.
+
+Using Array Collection Functions to Manipulate a List of Tasks
+// create an tasks DataFrame
+val tasksDF = Seq(("Monday", Array("Pick Up John", "Buy Milk", "Pay Bill"))).toDF("day", "tasks")
+
+// schema of tasksDF
+tasksDF.printSchema
+
+|-- day: string (nullable = true)
+|-- tasks: array (nullable = true)
+| |-- element: string (containsNull = true)
+
+// get the size of the array, sort it, and check to see if a particular value exists in the array
+tasksDF.select('day, size('tasks).as("size"),
+	sort_array('tasks).as("sorted_tasks"),
+	array_contains('tasks, "Pay Bill").as("shouldPayBill"))
+.show(false)
++------+-----+------------------------------------+--------------+
+| day | size	| sorted_tasks 				| shouldPayBill|
++------+-----+------------------------------------+--------------+
+|Monday| 3	| [Buy Milk, Pay Bill, Pick Up John] 	| true 		|
++------+-----+------------------------------------+--------------+
+
+// the explode function will create a new row for each element in the array
+tasksDF.select('day, explode('tasks)).show
++-------+-------------+
+| day	| col|
++-------+-------------+
+| Monday| Pick Up John|
+| Monday| Buy Milk|
+| Monday| Pay Bill|
++-------+-------------+
+
+The JSON-related collection functions are useful for converting a JSON string to and from a struct data type. The main functions are from_json, get_json_object, and to_json. Once a JSON string is converted to a Spark struct data type, then you can easily extract those values
+
+Examples of Using the from_json and to_json Functions
+
+import org.apache.spark.sql.types._
+
+// create a string that contains JSON string
+val todos = """{"day": "Monday","tasks": ["Pick Up John","Buy Milk","Pay Bill"]}"""
+
+val todoStrDF = Seq((todos)).toDF("todos_str")
+
+// at this point, todoStrDF is DataFrame with one column of string type
+todoStrDF.printSchema
+|-- todos_str: string (nullable = true)
+
+// in order to convert a JSON string into a Spark struct data type, we need to describe its structure to Spark
+val todoSchema = new StructType().add("day", StringType).add("tasks", ArrayType(StringType))
+
+// use from_json to convert JSON string
+val todosDF = todoStrDF.select(from_json('todos_str, todoSchema).as("todos"))
+
+// todos is a struct data type that contains two fields: day and tasks
+todosDF.printSchema
+|-- todos: struct (nullable = true)
+| |-- day: string (nullable = true)
+| |-- tasks: array (nullable = true)
+| | |-- element: string (containsNull = true)
+
+// retrieving value out of struct data type using the getItem function of Column class
+todosDF.select('todos.getItem("day"),
+	'todos.getItem("tasks"),
+	'todos.getItem("tasks").getItem(0).as("first_task")
+	).show(false)
+
++---------+-------------------------------------------------+-------------+
+|todos.day| todos.tasks 			| first_task |
++---------+-------------------------------------------------+-------------+
+| Monday| [Pick Up John, Buy Milk, Pay Bill]	| Pick Up John|
++---------+-------------------------------------------------+-------------+
+
+// to convert a Spark struct data type to JSON string, we can use to_json function
+todosDF.select(to_json('todos)).show(false)
++-------------------------------------------------------------------------+
+| structstojson(todos) |
++-------------------------------------------------------------------------+
+| {"day":"Monday","tasks":["Pick Up John","Buy Milk","Pay Bill"]} |
++-------------------------------------------------------------------------+
+
+Working with Miscellaneous Functions
+------------------------------------
+A few functions in the miscellaneous category are interesting and useful in certain situations. This section covers the following functions: monotonically_increasing_id,when, coalesce, and lit.
+
+Sometimes there is a need to generate monotonically increasing unique, but not necessarily consecutive, IDs for each row in the dataset. It is quite an interesting problem if you spend some time thinking about it. For example, if a dataset has 200 million rows and they are spread across many partitions (machines), how do you ensure the values are unique and increasing at the same time? This is the job of the monotonically_increasing_id function, which generates IDs as 64-bit integers. The key part in its algorithm is that it places the partition ID in the upper 31 bits.
+
+monotonically_increasing_id in Action
+// first generate a DataFrame with values from 1 to 10 and spread them
+across 5 partitions
+val numDF = spark.range(1,11,1,5)
+
+// verify that there are 5 partitions
+numDF.rdd.getNumPartitions
+Int = 5
+
+// now generate the monotonically increasing numbers and see which ones are in which partition
+numDF.select('id, monotonically_increasing_id().as("m_ii"),spark_partition_id().as("partition")).show
++---+------------+----------+
+| id| m_ii	| partition|
++---+------------+----------+
+| 1| 0| 0	|
+| 2| 1| 0	|
+| 3| 8589934592| 1|
+| 4| 8589934593| 1|
+| 5| 17179869184| 2|
+| 6| 17179869185| 2|
+| 7| 25769803776| 3|
+| 8| 25769803777| 3|
+| 9| 34359738368| 4|
+| 10| 34359738369| 4|
++---+------------+----------+
+// the above table shows the values in m_ii columns have a different range in each partition.
+
+If there is a need to evaluate a value against a list of conditions and return a value,then a typical solution is to use a switch statement, which is available in most high-level programming languages. When there is a need to do this with the value of a column in a DataFrame, then you can use the when function for this use case.
+
+Using the when Function to Convert a Numeric Value to a String
+
+// create a DataFrame with values from 1 to 7 to represent each day of the week
+val dayOfWeekDF = spark.range(1,8,1)
+
+// convert each numerical value to a string
+dayOfWeekDF.select('id, when('id === 1, "Mon")
+	.when('id === 2, "Tue")
+	.when('id === 3, "Wed")
+	.when('id === 4, "Thu")
+	.when('id === 5, "Fri")
+	.when('id === 6, "Sat")
+	.when('id === 7, "Sun").as("dow")
+).show
++---+----+
+| id| dow|
++---+----+
+| 1| Mon|
+| 2| Tue|
+| 3| Wed|
+| 4| Thu|
+| 5| Fri|
+| 6| Sat|
+| 7| Sun|
++---+----+
+
+// to handle the default case when we can use the otherwise function of the column class
+
+dayOfWeekDF.select('id, when('id === 6, "Weekend")
+	.when('id === 7, "Weekend")
+	.otherwise("Weekday").as("day_type")
+).show
+
++--+--------+
+|id|day_type|
++--+--------+
+| 1| Weekday|
+| 2| Weekday|
+| 3| Weekday|
+| 4| Weekday|
+| 5| Weekday|
+| 6| Weekend|
+| 7| Weekend|
++--+--------+
+
+When working with data, it is important to handle null values properly. One of the ways to do that is to convert them to some other values that represent null in your
+data processing logic. Borrowing from the SQL world, Spark provides a function called coalesce that takes one or more column values and returns the first one that is not null.
+
+Each argument in the coalesce function must be of type Column, so if you want to fill in a literal value, then you can leverage the lit function. The way this function works is it takes a literal value as an input and returns an instance of the Column class that wraps the input.
+
+Using coalesce to Handle a Null Value in a Column
+// create a movie with null title
+case class Movie(actor_name:String, movie_title:String, produced_year:Long)
+
+val badMoviesDF = Seq( Movie(null, null, 2018L),
+		Movie("John Doe", "Awesome Movie", 2018L)).toDF
+
+// use coalese to handle null value in title column
+badMoviesDF.select(coalesce('actor_name, lit("no_name")).as("new_title")).show
+
++----------+
+| new_title|
++----------+
+| no_name|
+| John Doe|
++----------+
+
+Working with User-Defined Functions
+-----------------------------------
+Spark SQL provides a fairly simple facility to write user-defined functions (UDFs).UDFs can be written in either Python, Java, or Scala, and they can leverage and integrate with any necessary libraries.
+
+Although UDFs can be written in either Scala, Java, or Python, you must be aware of the performance differences when UDFs are written in Python. UDFs must be
+registered with Spark before they are used so Spark knows to ship them to executors to be used and executed. Given that executors are JVM processes that are written in Scala, they can execute Scala or Java UDFs natively inside the same process. If a UDF is written in Python, then an executor can’t execute it natively, and therefore it has to spawn a separate Python process to execute the Python UDF. In addition to the cost of spawning a Python process, there is a large cost in terms of serializing data back and forth for every single row in the dataset.
+
+There are three steps involved in working with UDFs. The first one is to write a function and test it. The second step is to register that function with Spark by passing in the function name and its signature to Spark’s udf function. The last step is to use UDF in either the DataFrame code or when issuing SQL queries. The registration process is slightly different when using a UDF within SQL queries.
+
+
+A Simple UDF in Scala to Convert Numeric Grades to Letter Grades
+
+// create student grades DataFrame
+case class Student(name:String, score:Int)
+val studentDF = Seq(Student("Joe", 85),
+	Student("Jane", 90),
+	Student("Mary", 55)).toDF()
+
+// register as a view
+studentDF.createOrReplaceTempView("students")
+
+// create a function to convert grade to letter grade
+def letterGrade(score:Int) : String = {
+ score match {
+	case score if score > 100 => "Cheating"
+	case score if score >= 90 => "A"
+	case score if score >= 80 => "B"
+	case score if score >= 70 => "C"
+	case _ => "F"
+ }
+}
+
+// register as a UDF
+val letterGradeUDF = udf(letterGrade(_:Int):String)
+
+// use the UDF to convert scores to letter grades
+studentDF.select($"name",$"score",letterGradeUDF($"score").as("grade")).show
++-----+------+------+
+| name| score| grade|
++-----+------+------+
+| Joe | 85| B|
+| Jane| 90| A|
+| Mary| 55| F|
++-----+------+------+
+
+// register as UDF to use in SQL
+spark.sqlContext.udf.register("letterGrade", letterGrade(_: Int): String)
+
+spark.sql("select name, score, letterGrade(score) as grade from students").show
+
++-----+------+------+
+| name| score| grade|
++-----+------+------+
+| Joe | 85| B|
+| Jane| 90| A|
+| Mary| 55| F|
++-----+------+------+
+
+Advanced Analytics Functions
+----------------------------
+This section will cover the advanced analytics capabilities Spark SQL offers.
+
+The first one is about multidimensional aggregations, which is useful for use cases that involve hierarchical data analysis, where calculating subtotals and totals across a set of grouping columns is commonly needed. 
+
+The second capability is about performing aggregations based on time windows, which is useful when working with time-series data such as transactions or sensor values from IoT devices. 
+
+The third one is the ability to perform aggregations within a logical grouping of rows, which is referred to as a window. This capability enables you to easily perform calculations such as a moving average, a cumulative sum, or the rank of each row.
+
+Aggregation with Rollups and Cubes
+----------------------------------
+
+
+Rollups
+---------
+When working with hierarchical data such as the revenue data that spans different departments and divisions, rollups can easily calculate the subtotals and a grand total across them. Rollups respect the given hierarchy of the given set of rollup columns and always start the rolling up process with the first column in the hierarchy. The grand total is listed in the output where all the column values are null.
+
+Performing Rollups with Flight Summary Data
+// read in the flight summary data
+val flight_summary = spark.read.format("csv")
+	.option("header", "true")
+	.option("inferSchema","true")
+	.load(<path>/chapter5/data/flights/flight-summary.csv)
+
+// filter data down to smaller size to make it easier to see the rollups result
+val twoStatesSummary = flight_summary.select('origin_state, 'origin_city, 'count)
+	.where('origin_state === "CA" || 'origin_state === "NY")
+	.where('count > 1 && 'count < 20)
+	.where('origin_city =!= "White Plains")
+	.where('origin_city =!= "Newburgh")
+	.where('origin_city =!= "Mammoth Lakes")
+	.where('origin_city =!= "Ontario")
+
+// let's see what the data looks like
+twoStatesSummary.show
++-------------+--------------+------+
+| origin_state| origin_city| count|
++-------------+--------------+------+
+| CA| San Diego| 18|
+| CA| San Francisco| 5|
+| CA| San Francisco| 14|
+| CA| San Diego| 4|
+| CA| San Francisco| 2|
+| NY| New York| 4|
+| NY| New York| 2|
+| NY| Elmira| 15|
+| NY| Albany| 5|
+| NY| Albany| 3|
+| NY| New York| 4|
+| NY| Albany| 9|
+| NY| New York| 10|
++-------------+--------------+------+
+
+// perform the rollup by state, city, then calculate the sum of the count,and finally order by null last
+
+twoStateSummary.rollup('origin_state, 'origin_city)
+	.agg(sum("count") as "total")
+	.orderBy('origin_state.asc_nulls_last,'origin_city.asc_nulls_last)
+.show
+
++-------------+--------------+------+
+| origin_state	| origin_city	| total|
++-------------+--------------+------+
+| CA		| San Diego	| 22|
+| CA		| San Francisco | 21|
+| CA		| null		| 43|
+| NY		| Albany	| 17|
+| NY		| Elmira	| 15|
+| NY		| New York	| 20|
+| NY		| null		| 52|
+| null		| null		| 95|
++-------------+--------------+------+
+
+This output shows the subtotals per state on the third and seventh lines, and the grand total is shown on the last line with a null value in both the original_state and origin_city columns. The trick is to sort with the asc_nulls_last option, so Spark SQL will order null values last.
+
+Cube
+----
+A cube is basically a more advanced version of a rollup. It performs the aggregations across all the combinations of the grouping columns. Therefore, the result includes what a rollup provides as well as other combinations. In our example of cubing by the origin_state and origin_city, the result will include the aggregation for each of the original cities. The way to use the cube function is similar to how you use the rollup function.
+
+Performing a Cube Across the origin_state and origin_city Columns
+// perform the cube across origin_state and origin_city
+
+twoStateSummary.cube('origin_state, 'origin_city)
+	.agg(sum("count") as "total")
+	.orderBy('origin_state.asc_nulls_last,'origin_city.asc_nulls_last).show
+
+// see result below
++-------------+--------------+------+
+| origin_state| origin_city| total|
++-------------+--------------+------+
+| CA| San Diego		| 22|
+| CA| San Francisco	| 21|
+| CA| null		| 43|
+| NY| Albany		| 17|
+| NY| Elmira		| 15|
+| NY| New York		| 20|
+| NY| null		| 52|
+| null| Albany		| 17|
+| null| Elmira		| 15|
+| null| New York	| 20|
+| null| San Diego	| 22|
+| null| San Francisco	| 21|
+| null| null		| 95|
++-------------+--------------+------+
+In the result table, the lines that have a null value in the origin_state column represent the aggregation of all the cities in a state. Therefore, the result of a cube will always have more rows than the result of a rollu
+
+Aggregation with Time Windows
+-----------------------------
+Aggregation with time windows was introduced in Spark 2.0 to make it easy to work with time-series data, which consists of a series of data points in time order. This kind of dataset is common in industries such as finance or telecommunications. For example, the stock market transaction dataset has the transaction date, opening price, close price, volume, and other pieces of information for each stock symbol. Time window aggregations can help with answering questions such as what is the weekly average closing price of Apple stock or the monthly moving average closing price of Apple stock across each week.
+
+Window functions come in a few versions, but they all require a timestamp type column and a window length, which can be specified in seconds, minutes, hours, days,
+or weeks. The window length represents a time window that has a start time and end time, and it is used to determine which bucket a particular piece of time-series data should belong to.
+
+Another version takes additional input for the sliding window size, which tells how much a time window should slide by when calculating the next bucket.
+These versions of the window function are the implementations of the tumbling window and sliding window concepts in world event processing, and they will be described in more detail in Chapter 6.
+
+The following examples will use the Apple stock transactions, which can be found on the Yahoo Finance web site
+
+Using the Time Window Function to Calculate the Average Closing Price of Apple Stock
+
+val appleOneYearDF = spark.read.format("csv")
+	.option("header", "true")
+	.option("inferSchema","true")
+	.load("<path>/chapter5/data/stocks/aapl-2017.csv")
+
+// display the schema, the first column is the transaction date
+appleOneYearDF.printSchema
+|-- Date: timestamp (nullable = true)
+|-- Open: double (nullable = true)
+|-- High: double (nullable = true)
+|-- Low: double (nullable = true)
+|-- Close: double (nullable = true)
+|-- Adj Close: double (nullable = true)
+|-- Volume: integer (nullable = true)
+
+// calculate the weekly average price using window function inside the groupBy transformation
+// this is an example of the tumbling window, aka fixed window
+val appleWeeklyAvgDF = appleOneYearDF.groupBy(window('Date, "1 week"))
+				.agg(avg("Close").as("weekly_avg"))
+
+// the result schema has the window start and end time
+appleWeeklyAvgDF.printSchema
+|-- window: struct (nullable = true)
+| |-- start: timestamp (nullable = true)
+| |-- end: timestamp (nullable = true)
+|-- weekly_avg: double (nullable = true
+
+// display the result with ordering by start time and round up to 2 decimal points
+appleWeeklyAvgDF.orderBy("window.start")
+	.selectExpr("window.start", "window.end","round(weekly_avg, 2) as weekly_avg")
+	.show(5)
+// notice the start time is inclusive and end time is exclusive
++--------------------+--------------------+---------------+
+| start			| end		| weekly_avg|
++--------------------+--------------------+---------------+
+| 2016-12-28 16:00:00| 2017-01-04 16:00:00| 116.08|
+| 2017-01-04 16:00:00| 2017-01-11 16:00:00| 118.47|
+| 2017-01-11 16:00:00| 2017-01-18 16:00:00| 119.57|
+| 2017-01-18 16:00:00| 2017-01-25 16:00:00| 120.34|
+| 2017-01-25 16:00:00| 2017-02-01 16:00:00| 123.12|
++--------------------+--------------------+---------------+
+
+The above example uses a one-week tumbling window, where there is no overlap. Therefore, each transaction is used only once to calculate the moving average.
+
+The below example uses the sliding window. This means some transactions will be used more than once in calculating the average monthly moving average. The window size is four weeks, and it slides by one week at a time in each window.
+
+Use the Time Window Function to Calculate the Monthly Average Closing Price of Apple Stock
+// 4 weeks window length and slide by one week each time
+val appleMonthlyAvgDF = appleOneYearDF.groupBy(window('Date, "4 week", "1 week"))
+		.agg(avg("Close").as("monthly_avg"))
+
+// display the results with order by start time
+appleMonthlyAvgDF.orderBy("window.start")
+	.selectExpr("window.start", "window.end","round(monthly_avg, 2) as monthly_avg")
+	.show(5)
+
++--------------------+--------------------+------------+
+| start		  	| end		| monthly_avg|
++--------------------+--------------------+------------+
+| 2016-12-07 16:00:00| 2017-01-04 16:00:00| 116.08|
+| 2016-12-14 16:00:00| 2017-01-11 16:00:00| 117.79|
+| 2016-12-21 16:00:00| 2017-01-18 16:00:00| 118.44|
+| 2016-12-28 16:00:00| 2017-01-25 16:00:00| 119.03|
+| 2017-01-04 16:00:00| 2017-02-01 16:00:00| 120.42|
++--------------------+--------------------+------------+
+
+Since the sliding window interval is one week, the previous result table shows that the start time difference between two consecutive rows is one week apart. Between two consecutive rows, there are about three weeks of overlapping transactions, which means a transaction is used more than one time to calculate the moving average.
+
+Window Functions
+----------------
+Up to this point, you know how to use functions such as concat or round to compute an output from one or more column values of a single row and leverage aggregation
+functions such as max or sum to compute an output for each group of rows. 
+ 
+Sometimes there is a need to operate on a group of rows and return a value for every input row. Window functions provide this unique capability to make it easy to perform calculations such as a moving average, a cumulative sum, or the rank of each row.
+
+There are two main steps for working with window functions. The first one is to define a window specification that defines a logical grouping of rows called a frame,
+which is the context in which each row is evaluated. 
+
+The second step is to apply a window function that is appropriate for the problem that you are trying to solve. You can find more details about the available window functions in the following sections.
+
+The window specification defines three important components the window functions will use. The first component is called partition by, and this is where you specify one or more columns to group the rows by. 
+
+The second component is called order by, and it defines how the rows should be ordered based on one or more columns and whether the ordering should be in ascending or descending order. 
+
+Out of the three components, the last one is more complicated and will require a detailed explanation. The last component is called frame, and it defines the boundary of the window with respect to the current row. In other words, the “frame” restricts which rows to be included when calculating a value for the current row. A range of rows to include in a window frame can be specified using the row index or the actual value of the order by expression. 
+
+A window specification is built using the functions defined in the org.apache.spark.sql.expressions.Window class. The rowsBetween and rangeBetweeen functions are used to define the range by row index and actual value, respectively.
+
+In addition to the ordering and partitioning, users need to define the start boundary of the frame, the end boundary of the frame, and the type of the frame, which are three components of a frame specification.
+
+There are five types of boundaries, which are UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, <value> PRECEDING, and <value> FOLLOWING. UNBOUNDED PRECEDING and UNBOUNDED FOLLOWING represent the first row of the partition and the last row of the partition, respectively. For the other three types of boundaries, they specify the offset from the position of the current input row and their specific meanings are defined based on the type of the frame. There are two types of frames, ROW frame and RANGE frame.
+
+Window functions can be categorized into three different types: ranking functions, analytic functions, and aggregate functions.
+
+Ranking Functions
+-----------------
+Name 		Description
+---------------------------
+rank 		Returns the rank or order of rows within a frame based on some sorting order.
+
+dense_rank 	Similar to rank, but leaves no gaps in the ranks when there are ties.
+
+percent_rank 	Returns the relative rank of rows within a frame.
+
+ntile(n) 	Returns the ntile group ID in an ordered window partition. For example, if n is 4,
+		the first quarter of the rows will get a value of 1, the second quarter of rows will
+		get a value of 2, and so on.
+
+row_number 	Returns a sequential number starting with 1 with a frame.
+
+Analytic Functions
+------------------
+Name		 	Description
+-----------------------------------
+cume_dist 		Returns the cumulative distribution of values with a frame. In other words,
+			the fraction of rows that are below the current row.
+
+lag(col, offset) 	Returns the value of the column that is offset rows before the current row.
+
+lead(col,offset)	Returns the value of the column that is offset rows after the current row.
+
+
+Below table contains the shopping transaction data of two fictitious users, John and Mary.
+
+User Shopping Transactions
+
+Name 	Date 	Amount
+----------------------
+John 2017-07-02 13.35
+John 2016-07-06 27.33
+John 2016-07-04 21.72
+Mary 2017-07-07 69.74
+Mary 2017-07-01 59.44
+Mary 2017-07-05 80.14
+
+With this shopping transaction data, let’s try using window functions to answer the following questions:
+
+• For each user, what are the two highest transaction amounts?
+• What is the difference between the transaction amount of each user and their highest transaction amount?
+• What is the moving average transaction amount of each user?
+• What is the cumulative sum of the transaction amount of each user?
+
+To answer the first question, you apply the rank window function over a window specification that partitions the data by user and sorts it by the amount in descending
+order. The ranking window function assigns a rank to each row based on the sorting order of each row in each frame.
+
+Apply the Rank Window Function to Find out the Top Two Transactions per User, Below is actual code to solve the first question.
+
+// small shopping transaction data set for two users
+val txDataDF= Seq(("John", "2017-07-02", 13.35),
+	("John", "2017-07-06", 27.33),
+	("John", "2017-07-04", 21.72),
+	("Mary", "2017-07-07", 69.74),
+	("Mary", "2017-07-01", 59.44),
+	("Mary", "2017-07-05", 80.14))
+	.toDF("name", "tx_date", "amount")
+
+// import the Window class
+import org.apache.spark.sql.expressions.Window
+
+// define window specification to partition by name and order by amount in descending amount
+val forRankingWindow = Window.partitionBy("name").orderBy(desc("amount"))
+
+// add a new column to contain the rank of each row, apply the rank function to rank each row
+val txDataWithRankDF = txDataDF.withColumn("rank", rank().over(forRankingWindow))
+
+// filter the rows down based on the rank to find the top 2 and display the result
+txDataWithRankDF.where('rank < 3).show(10)
++------+-----------+-------+-----+
+| name| tx_date| amount| rank|
++------+-----------+-------+-----+
+| Mary| 2017-07-05| 80.14| 1|
+| Mary| 2017-07-07| 69.74| 2|
+| John| 2017-07-06| 27.33| 1|
+| John| 2017-07-04| 21.72| 2|
++------+-----------+-------+-----+
+
+The approach for solving the second question involves applying the max function over the amount column across all the rows of each partition. In addition to partitioning by the username, it also needs to define a frame boundary that includes all the rows in each partition. To do that, you use the Window.rangeBetween function with Window. unboundedPreceding as the start value and Window.unboundedFollowing as the end value.
+
+Applying the max Window Function to Find the Difference of Each Row and the Highest Amount
+
+// use rangeBetween to define the frame boundary that includes all the rows in each frame
+val forEntireRangeWindow = Window.partitionBy("name")
+	.orderBy(desc("amount"))
+	.rangeBetween(Window.unboundedPreceding,Window.unboundedFollowing)
+
+// apply the max function over the amount column and then compute the difference
+val amountDifference = max(txDataDF("amount")).over(forEntireRangeWindow) - txDataDF("amount")
+
+// add the amount_diff column using the logic defined above
+val txDiffWithHighestDF = txDataDF.withColumn("amount_diff", round(amountDifference, 3))
+
+// display the result
+txDiffWithHighestDF.show
++------+-----------+-------+-------------+
+| name| tx_date	  | amount| amount_diff|
++------+-----------+-------+-------------+
+| Mary| 2017-07-05| 80.14| 0.0|
+| Mary| 2017-07-07| 69.74| 10.4|
+| Mary| 2017-07-01| 59.44| 20.7|
+| John| 2017-07-06| 27.33| 0.0|
+| John| 2017-07-04| 21.72| 5.61|
+| John| 2017-07-02| 13.35| 13.98|
++------+-----------+-------+-------------+
+
+To compute the transaction amount moving average of each user in the order of transaction date, you will leverage the avg function to calculate the average amount for
+each row based on a set of rows in a frame. For this particular example, you want each frame to include three rows: the current row plus one row before it and one row after it. 
+
+Depending a particular use case, the frame might include more rows before and after the current row. Similar to the previous examples, the window specification will partition the data by user, but the rows in each frame will be sorted by transaction date.
+
+Applying the Average Window Function to Compute the Moving Average Transaction Amount
+
+// define the window specification
+// a good practice is to specify the offset relative to Window.currentRow
+val forMovingAvgWindow = Window.partitionBy("name").orderBy("tx_date")
+.rowsBetween(Window.currentRow-1,Window.currentRow+1)
+
+// apply the average function over the amount column over the window specification
+// also round the moving average amount to 2 decimals
+val txMovingAvgDF = txDataDF.withColumn("moving_avg",round(avg("amount").over(forMovingAvgWindow), 2))
+
+// display the result
+txMovingAvgDF.show
++------+-----------+-------+-----------+
+| name| tx_date| amount| moving_avg|
++------+-----------+-------+-----------+
+| Mary| 2017-07-01| 59.44| 69.79|
+| Mary| 2017-07-05| 80.14| 69.77|
+| Mary| 2017-07-07| 69.74| 74.94|
+| John| 2017-07-02| 13.35| 17.54|
+| John| 2017-07-04| 21.72| 20.8|
+| John| 2017-07-06| 27.33| 24.53|
++-------+----------+-------+-----------+
+
+To compute the cumulative sum of the transaction amount for each user, you will apply the sum function over a frame that consists of all the rows up to the current row. The partition by and order by clauses are the same as the moving average example. Below shows how to apply the sum function over the window specification described earlier.
+
+Applying the sum Window function to compute the cumulative sum of transaction amount
+
+// define the window specification with each frame includes all the previous rows and the current row
+val forCumulativeSumWindow = Window.partitionBy("name").orderBy("tx_date"). rowsBetween(Window.unboundedPreceding,Window.currentRow)
+
+// apply the sum function over the window specification
+val txCumulativeSumDF = txDataDF.withColumn("culm_sum",round(sum("amount").over(forCumulativeSumWindow),2))
+
+// display the result
+txCumulativeSumDF.show
++------+-----------+-------+---------+
+| name| tx_date| amount| culm_sum|
++------+-----------+-------+---------+
+| Mary| 2017-07-01| 59.44| 59.44|
+| Mary| 2017-07-05| 80.14| 139.58|
+| Mary| 2017-07-07| 69.74| 209.32|
+| John| 2017-07-02| 13.35| 13.35|
+| John| 2017-07-04| 21.72| 35.07|
+| John| 2017-07-06| 27.33| 62.4|
++------+-----------+-------+---------+
+
+The default frame of a window specification includes all the preceding rows and up to the current row. For the previous example, it is not necessary to specify the frame, so you should get the same result.
+
+The previous window function examples were written using the DataFrame APIs. It is possible to achieve the same goals using SQL with the PARTITION BY, ORDER BY, ROWS
+BETWEEN, and RANGE BETWEEN key words. The frame boundary can be specified using the following key words: UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW,
+<value> PRECEDING, and <value> FOLLOWING.Below shows examples of using the window functions with SQL.
+
+Example of a Window Function in SQL
+// register the txDataDF as a temporary view called tx_data
+txDataDF.createOrReplaceTempView("tx_data")
+// use RANK window function to find top two highest transaction amount
+spark.sql("select name, tx_date, amount, rank from
+(
+	select name, tx_date, amount,
+	RANK() OVER (PARTITION BY name ORDER BY amount
+	DESC) as rank from tx_data
+) where rank < 3").show
+
+// difference between maximum transaction amount
+spark.sql("select name, tx_date, amount, round((max_amount - amount),2) as
+amount_diff from
+(
+	select name, tx_date, amount, MAX(amount) OVER
+	(PARTITION BY name ORDER BY amount DESC
+	RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED
+	FOLLOWING
+) as max_amount from tx_data)").show
+
+// moving average
+spark.sql("select name, tx_date, amount, round(moving_avg,2) as moving_avg from
+(
+	select name, tx_date, amount, AVG(amount) OVER
+	(PARTITION BY name ORDER BY tx_date
+	ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+) as moving_avg from tx_data)").show
+
+// cumulative sum
+spark.sql("select name, tx_date, amount, round(culm_sum,2) as moving_avg from
+(
+	select name, tx_date, amount, SUM(amount) OVER
+	(PARTITION BY name ORDER BY tx_date
+	ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+) as culm_sum from tx_data)").show
+
+When using the window functions in SQL, the partition by, order by, and frame window must be specified in a single statement.

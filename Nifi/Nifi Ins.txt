@@ -1,0 +1,14 @@
+untar nifi
+copy to hadoop env
+create path variable "Nifi-Home"
+set path varibe $path:$nifi-home
+nifi.sh start
+to check the status nifi.sh status
+go to log folder
+ cd logs
+"tail -f nifi-app.log
+
+Successfully checkpoints
+open browser
+localhost:8080/nifi/
+

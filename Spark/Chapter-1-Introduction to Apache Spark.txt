@@ -1,0 +1,65 @@
+Overview
+--------
+Spark is a general distributed data processing engine built for speed, ease of use, and flexibility. The combination of these three properties is what makes Spark so popular and widely adopted in the industry.
+
+Speed
+------
+The Apache Spark website claims it can run a certain data processing job up to 100 times faster than Hadoop MapReduce.
+
+Ease of use
+------------
+Since the inception of the Spark project, the ease of use has been one of the main focuses of the Spark creators. It offers more than 80 high-level, commonly needed data processing operators to make it easy for developers, data scientists, and data analysts to build all kinds of interesting data applications. In addition, these operators are available in multiple languages, namely, Scala, Java, Python, and R. Software engineers, data scientists, and data analysts can pick and choose their favorite language to solve large-scale data processing problems with Spark.
+
+Flexibility
+-----------
+In terms of flexibility, Spark offers a single unified data processing stack that can be used to solve multiple types of data processing workloads, including batch processing, interactive queries, iterative processing needed by machine learning algorithms, and real-time streaming processing to extract actionable insights at near real-time. Before the existence of Spark, each of these types of workload required a different solution and technology. Now companies can just leverage Spark for most of their data processing needs. Using a single technology stack will help with dramatically reducing the operational cost and resources.
+
+A big data ecosystem consists of many pieces of technology including a distributed storage engine called HDFS, a cluster management system to efficiently manage a cluster of machines, and different file formats to store a large amount of data efficiently in binary and columnar format. Spark integrates really well with the big data ecosystem. This is another reason why Spark adoption has been growing at a really fast pace.
+
+Another really cool thing about Spark is it is open source; therefore, anyone can download the source code to examine the code, to figure out how a certain feature was implemented, or to extend its functionalities.
+
+Spark Core Concepts and Architecture
+------------------------------------
+Before diving into the details of Spark, it is important to have a high-level understanding of the core concepts and the various core components in Spark. This section will cover the following:
+• Spark clusters
+• The resource management system
+• Spark applications
+• Spark drivers
+• Spark executors
+
+Spark Clusters and the Resource Management System
+--------------------------------------------------
+Spark is essentially a distributed system that was designed to process a large volume of data efficiently and quickly. This distributed system is typically deployed onto a collection of machines, which is known as a Spark cluster. A cluster size can be as small as a few machines or as large as thousands of machines. The largest publicly announced Spark cluster in the world has more than 8,000 machines. 
+
+To efficiently and intelligently manage a collection of machines, companies rely on a resource management system such as Apache YARN or Apache Mesos. The two main components in a typical resource management system are the cluster manager and the worker. The cluster manager knows where the workers are located, how much memory they have, and the number of CPU cores each one has. One of the main responsibilities of the cluster manager is to orchestrate(Plan/assign) the work by assigning it to each worker. Each worker offers resources (memory,CPU, etc.) to the cluster manager and performs the assigned work.
+
+Most companies that have been adopting big data technologies in recent years usually already have a YARN cluster to run MapReduce jobs.
+
+Please see the picture.
+
+Spark Application
+-----------------
+A Spark application consists of two parts. The first is the application data processing logic expressed using Spark APIs, and the other is the Spark driver. The application data processing logic can be as simple as a few lines of code to perform a few data processing operations or can be as complex as training a large machine learning model that requires many iterations and could run for many hours to complete. 
+
+The Spark driver is the central coordinator of a Spark application, and it interacts with a cluster manager to figure out which machines to run the data processing logic on. For each one of those machines, the Spark driver requests that the cluster manager launch a process called the Spark executor. Another important job of the Spark driver is to manage and distribute Spark tasks onto each executor on behalf of the application. If the data processing logic requires the Spark driver to display the computed results to a user, then it will coordinate with each Spark executor to collect the computed result and merge them together. 
+
+The entry point into a Spark application is through a class called SparkSession, which provides facilities for setting up configurations.
+\\\
+\
+4
+
+
+Spark Driver and Executor
+-------------------------
+Each Spark executor is a JVM process and is exclusively allocated to a specific Spark application. This was a conscious design decision to avoid sharing a Spark executor between multiple Spark applications in order to isolate them from each other so one badly behaving Spark application wouldn’t affect other Spark applications. The lifetime of a Spark executor is the duration of a Spark application, which could run for a few minutes or for a few days. Since Spark applications are running in separate Spark executors, sharing data between them will require writing the data to an external storage system like HDFS.
+
+As depicted in Figure 1-2, Spark employs a master-slave architecture, where the Spark driver is the master and the Spark executor is the slave. Each of these components runs as an independent process on a Spark cluster. A Spark application consists of one and only one Spark driver and one or more Spark executors. Playing the slave role, each Spark executor does what it is told, which is to execute the data processing logic in the form of tasks. Each task is executed on a separate CPU core. This is how Spark can speed up the processing of a large amount of data by processing it in parallel. In addition to executing assigned tasks, each Spark executor has the responsibility of caching a portion of the data in memory and/or on disk when it is told to do so by the application logic.
+
+Please see the picture in PDF
+
+At the time of launching a Spark application, you can request how many Spark executors an application needs and how much memory and the number of CPU cores each executor should have. Figuring out an appropriate number of Spark executors,
+the amount of memory, and the number of CPU requires some understanding of the amount of data that will be processed, the complexity of the data processing logic, and the desired duration by which a Spark application should complete the processing logic.
+
+Spark Unified Stack
+-------------------
+Please get the information from PDF

@@ -1,0 +1,159 @@
+Chapter 23
+For Expressions Revisited
+-----------------------------
+
+Chapter 16 demonstrated that higher-order functions such as map, flatMap, and filter provide powerful constructions for dealing with lists. But sometimes the level of abstraction required by these functions makes a program a bit hard to understand.
+
+Here’s an example
+
+scala> case class Person(name: String, isMale: Boolean, children: Person*)
+
+Here’s a list of some sample persons:
+
+val lara = Person("Lara", false)
+val bob = Person("Bob", true)
+val julie = Person("Julie", false, lara, bob)
+val persons = List(lara, bob, julie)
+
+Now, say you want to find out the names of all pairs of mothers and their children in that list. Using map, flatMap and filter, you can formulate the following query:
+
+scala> persons filter (p => !p.isMale) flatMap (p => (p.children map (c => (p.name, c.name))))
+
+res0: List[(String, String)] = List((Julie,Lara),(Julie,Bob))
+
+Using a for expression, the same example can be written as follows in simpler way
+
+scala> for (p <-persons; if !p.isMale; c <- p.children)
+yield (p.name, c.name)
+res2: List[(String, String)] = List((Julie,Lara),(Julie,Bob))
+
+The result of this expression is exactly the same as the result of the previous expression.
+
+23.1 For expressions
+--------------------
+Generally, a for expression is of the form:
+
+for ( seq ) yield expr
+
+Here, seq is a sequence of generators, definitions, and filters, with semicolons between successive elements. An example is the for expression:
+
+for (p <- persons; n = p.name; if (n startsWith "To"))
+yield n
+
+This for expression contains one generator, one definition, and one filter.
+
+you can also enclose the sequence in braces instead of parentheses. Then the semicolons become optional:
+for {
+	p <- persons // a generator
+	n = p.name // a definition
+	if (n startsWith "To") // a filter
+} yield n
+
+Every for expression starts with a generator. If there are several generators in a for expression, later generators vary more rapidly than earlier ones. You can verify this easily with the following simple test:
+
+scala> for (x <- List(1, 2); y <- List("one", "two"))
+yield (x, y)
+res3: List[(Int, java.lang.String)] = List((1,one), (1,two), (2,one), (2,two))
+
+
+23.2 The n-queens problem
+-------------------------
+Please read this in PDF
+
+23.3 Querying with for expressions
+----------------------------------
+The for notation is essentially equivalent to common operations of database query languages. For instance, say you are given a database named books, represented as a list of books, where Book is defined as follows:
+
+case class Book(title: String, authors: String*)
+
+Here is a small example database, represented as an in-memory list:
+
+val books: List[Book] =
+List(
+	Book(
+		"Structure and Interpretation of Computer Programs",
+		"Abelson, Harold", "Sussman, Gerald J."
+	),
+	Book(
+		"Principles of Compiler Design",
+		"Aho, Alfred", "Ullman, Jeffrey"
+	),
+	Book(
+		"Programming in Modula2",
+		"Wirth, Niklaus"
+	),
+	Book(
+		"Elements of ML Programming",
+		"Ullman, Jeffrey"
+	),
+	Book(
+		"The Java Language Specification", 
+		"Gosling, James","Joy, Bill", "Steele, Guy", "Bracha, Gilad"
+	)
+)
+
+Then, to find the titles of all books whose author’s last name is “Gosling”:
+scala> for (b <- books;a <- b.authors if a startsWith "Gosling")
+yield b.title
+
+res4: List[String] = List(The Java Language Specification)
+Or, to find the titles of all books that have the string “Program” in their title:
+
+scala> for (b <- books if (b.title indexOf "Program") >= 0)
+yield b.title
+res5: List[String] = List(Structure and Interpretation of Computer Programs, Programming in Modula2,
+Elements of ML Programming)
+
+Or, to find the names of all authors that have written at least two books in the database:
+
+scala> for (b1 <- books; b2 <- books if b1 != b2; a1 <- b1.authors; a2 <- b2. authors if a1 == a2)
+yield a1
+res6: List[String] = List(Ullman, Jeffrey, Ullman, Jeffrey)
+
+The last solution is not yet perfect, because authors will appear several times in the list of results. You still need to remove duplicate authors from result lists. This can be achieved with the following function:
+
+scala> def removeDuplicates[A](xs: List[A]): List[A] = {
+	if (xs.isEmpty) xs
+	else
+		xs.head :: removeDuplicates( xs.tail filter (x => x != xs.head))
+}
+removeDuplicates: [A](xs: List[A])List[A]
+scala> removeDuplicates(res6)
+res7: List[String] = List(Ullman, Jeffrey)
+
+23.4 Translation of for expressions
+-----------------------------------
+Every for expression can be expressed in terms of the three higher-order functions map, flatMap, and withFilter. This section describes the translation scheme, which is also used by the Scala compiler.
+
+Translating for expressions with one generator First, assume you have a simple for expression:
+for (x <- expr1)
+
+yield expr2 where x is a variable. Such an expression is translated to:
+
+expr1.map(x => expr2)
+
+Translating for expressions starting with a generator and a filter Now, consider for expressions that combine a leading generator with some other elements. A for expression of the form:
+
+for (x <- expr1 if expr2) yield expr3
+is translated to:
+for (x <- expr1 withFilter (x => expr2)) yield expr3
+
+For example, the following expression sums up all elements of a matrix represented as a list of lists:
+
+var sum = 0
+for (xs <-xss; x <-xs)
+sum += x
+
+This loop is translated into two nested foreach applications:
+var sum = 0
+xss foreach (xs =>
+	xs foreach (x =>
+		sum += x))
+
+23.5 Going the other way
+------------------------
+Not that much important, you can read PDF
+
+23.6 Generalizing for
+--------------------
+Not that much important, you can read PDF

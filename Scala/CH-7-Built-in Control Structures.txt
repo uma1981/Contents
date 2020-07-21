@@ -1,0 +1,354 @@
+Chapter 7
+---------
+Built-in Control Structures
+---------------------------
+
+One thing you will notice is that almost all of Scala’s control structures result in some value.
+
+In addition, imperative languages often have a ternary operator (such as the ?: operator of C, C++, and Java), which behaves exactly like if, but results in a value. Scala adopts this ternary operator model, but calls it if. 
+
+In other words, Scala’s if can result in a value. Scala then continues this trend by having for, try, and match also result in values.
+
+Programmers can use these result values to simplify their code, just as they use return values of functions. Without this facility, the programmer must create temporary variables just to hold results that are calculated inside a control structure.
+
+Overall, Scala’s basic control structures, minimal as they are, are sufficient to provide all of the essentials from imperative languages. Further, they allow you to shorten your code by consistently having result values.
+
+7.1 If expressions
+-------------------
+Here is a common example, written in an imperative style:
+
+var filename = "default.txt"
+if (!args.isEmpty)
+filename = args(0)
+
+This code can be written more nicely,if is an expression that results in a value.
+
+val filename =
+if (!args.isEmpty) args(0)
+else "default.txt"
+
+This code is slightly shorter, but its real advantage is that it uses a val instead of a var. Using a val is the functional style, and it helps you in much the same way as a final variable in Java. It tells readers of the code that the variable will never change.
+
+A second advantage to using a val instead of a var is that it better supports equational reasoning.
+
+println(if (!args.isEmpty) args(0) else "default.txt")
+
+The choice is yours. You can write it either way. Using vals helps you safely make this kind of refactoring as your code evolves over time.
+
+7.2 While loops
+---------------
+Scala’s while loop behaves as in other languages. It has a condition and a body, and the body is executed over and over as long as the condition holds true.
+
+def gcdLoop(x: Long, y: Long): Long = {
+ var a = x
+ var b = y
+ while (a != 0) 
+ {
+  val temp = a
+  a = b % a
+  b = temp
+ }
+b
+}
+
+Scala also has a do-while loop. This works like the while loop except that it tests the condition after the loop body instead of before.
+
+var line = ""
+do {
+ line = readLine()
+ println("Read: "+ line)
+} while (line != "")
+
+The while and dowhile constructs are called “loops,” not expressions, because they don’t result in an interesting value. The type of the result is Unit. It turns out that a value (and in fact, only one value) exists whose type is Unit. It is called the unit value and is written ().
+
+scala> def greet() { println("hi") }
+greet: ()Unit
+y-
+scala> greet() == ()
+hi
+res0: Boolean = true
+
+Because no equals sign precedes its body, greet is defined to be a procedure with a result type of Unit. Therefore, greet returns the unit value, ().This is confirmed in the next line: comparing the greet’s result for equality with the unit value, (), yields true.
+
+One other construct that results in the unit value, which is relevant here, is reassignment to vars. For example, were you to attempt to read lines in Scala using the following while loop , you’ll run into trouble:
+
+var line = ""
+while ((line = readLine()) != "") // This doesn’t work!
+println("Read: "+ line)
+
+When you compile this code, Scala will give you a warning that comparing values of type Unit and String using != will always yield true. Thus, the value of the assignment “line = readLine()” will always be () and never be "". As a result, this while loop’s condition will never be false, and the loop will, therefore, never terminate.
+
+Example below shows an alternate way to determine a greatest common divisor of two numbers.1 Given the same two values for x and y, the gcd function shown below will return the same result as the gcdLoop function, shown in example above. The difference between these two approaches is that gcdLoop is written in an imperative style, using vars and and a while loop, whereas gcd is written in a more functional style that involves recursion (gcd calls itself) and requires no vars
+
+def gcd(x: Long, y: Long): Long =
+if (y == 0) x else gcd(y, x % y)
+
+If there isn’t a good justification for a particular while or dowhile loop, try to find a way to do the same thing without it.
+
+7.3 For expressions
+-------------------
+Scala’s for expression is a Swiss army knife of iteration. It lets you combine a few simple ingredients in different ways to express a wide variety of iterations.
+
+Iteration through collections
+-----------------------------
+The simplest thing you can do with for is to iterate through all the elements of a collection.For example
+
+val filesHere = (new java.io.File(".")).listFiles
+for (file <- filesHere)
+ println(file)
+
+First, we create a java.io.File on the current directory, ".", and call its listFiles method. With the “file <- filesHere” syntax, which is called a generator, we iterate through the elements of filesHere. In each iteration, a new val named file is initialized with an element value. The compiler infers the type of file to be File, because filesHere is an Array[File]. For each iteration, the body of the for expression, println(file), will be executed.
+
+You can create Ranges using syntax like “1 to 5” and can iterate through them with a for. Here is a simple example:
+scala> for (i <- 1 to 4)
+println("Iteration "+ i)
+Iteration 1
+Iteration 2
+Iteration 3
+Iteration 4
+
+If you don’t want to include the upper bound of the range in the values that are iterated over, use until instead of to:
+scala> for (i <- 1 until 4)
+println("Iteration "+ i)
+Iteration 1
+Iteration 2
+Iteration 3
+
+Filtering
+----------
+Sometimes you do not want to iterate through a collection in its entirety. You want to filter it down to some subset. You can do this with a for expression by adding a filter: an if clause inside the for’s parentheses.
+
+val filesHere = (new java.io.File(".")).listFiles
+for (file <- filesHere if file.getName.endsWith(".scala"))
+println(file)
+
+Impertive style below
+
+for (file <- filesHere)
+ if (file.getName.endsWith(".scala"))
+   println(file)
+
+You can include more filters if you want. Just keep adding if clauses. For example, to be extra defensive, the code in below prints only files and not directories. It does so by adding a filter that checks the file’s isFile method.
+
+for ( file <- filesHere
+if file.isFile
+if file.getName.endsWith(".scala")
+) println(file)
+
+Nested iteration
+----------------
+If you add multiple <- clauses, you will get nested “loops.” For example,the for expression shown in Listing 7.8 has two nested loops. The outer loop iterates through filesHere, and the inner loop iterates through fileLines(file) for any file that ends with .scala.
+
+def fileLines(file: java.io.File) = scala.io.Source.fromFile(file).getLines().toList
+def grep(pattern: String) =
+for (
+ file <- filesHere
+ if file.getName.endsWith(".scala");
+ line <- fileLines(file)
+ if line.trim.matches(pattern)
+) println(file +": "+ line.trim)
+grep(".*gcd.*")
+
+If you prefer, you can use curly braces instead of parentheses to surround the generators and filters. One advantage to using curly braces is that you can leave off some of the semicolons that are needed when you use parentheses.
+
+Mid-stream variable bindings
+----------------------------
+You can do this by binding the result to a new variable using an equals sign (=). The bound variable is introduced and used just like a val, only with the val keyword left out. Below shows an example.
+
+Below example, a variable named trimmed is introduced halfway through the for expression. That variable is initialized to the result of line.trim. The rest of the for expression then uses the new variable in two places, once in an if and once in println.
+
+def grep(pattern: String) =
+for { file <- filesHere
+ if file.getName.endsWith(".scala")
+ line <- fileLines(file)
+ trimmed = line.trim
+ if trimmed.matches(pattern)
+} println(file +": "+ trimmed)
+grep(".*gcd.*")
+
+Producing a new collection
+--------------------------
+While all of the examples so far have operated on the iterated values and then forgotten them, you can also generate a value to remember for each iteration. To do so, you prefix the body of the for expression by the keyword yield.For example,
+
+def scalaFiles =
+for 
+{ 	file <- filesHere
+	if file.getName.endsWith(".scala")
+} yield file
+
+Each time the body of the for expression executes it produces one value, in this case simply file. When the for expression completes, the result will include all of the yielded values contained in a single collection. The type of the resulting collection is based on the kind of collections processed in the iteration clauses. In this case the result is an Array[File], because filesHere is an array and the type of the yielded expression is File.
+
+Avoid the temptation to write things like this:
+
+for (file <- filesHere if file.getName.endsWith(".scala")) {
+yield file // Syntax error!
+}
+
+Another example for yield
+
+val forLineLengths =
+for {
+file <- filesHere
+if file.getName.endsWith(".scala")
+line <- fileLines(file)
+trimmed = line.trim
+if trimmed.matches(".*for.*")
+} yield trimmed.length
+
+7.4 Exception handling with try expressions
+--------------------------------------------
+Scala’s exceptions behave just like in many other languages. Instead of returning a value in the normal way, a method can terminate by throwing an exception. The method’s caller can either catch and handle that exception,or it can itself simply terminate, in which case the exception propagates to the caller’s caller. The exception propagates in this way, unwinding the call stack, until a method handles it or there are no more methods left.
+
+Throwing exceptions
+-------------------
+Throwing an exception looks the same as in Java. You create an exception object and then you throw it with the throw keyword:
+
+throw new IllegalArgumentException
+Although it may seem somewhat paradoxical, in Scala, throw is an expression that has a result type. Here is an example in which that result type matters:
+
+val half =
+if (n % 2 == 0)
+n / 2
+else
+throw new RuntimeException("n must be even")
+
+What happens here is that if n is even, half will be initialized to half of n. If n is not even, an exception will be thrown before half can be initialized to anything at all. Because of this, it is safe to treat a thrown exception as
+any kind of value whatsoever. Any context that tries to use the return from a throw will never get to do so, and thus no harm will come.
+
+Catching exceptions
+-------------------
+You catch exceptions using the syntax shown in Listing 7.11 The syntax for catch clauses was chosen for its consistency with an important part of Scala: pattern matching.
+
+import java.io.FileReader
+import java.io.FileNotFoundException
+import java.io.IOException
+try 
+{
+ val f = new FileReader("input.txt")
+ // Use and close file
+} catch 
+{
+ case ex: FileNotFoundException => // Handle missing file
+ case ex: IOException => // Handle other I/O error
+}
+
+The behavior of this try-catch expression is the same as in other languages with exceptions. The body is executed, and if it throws an exception, each catch clause is tried in turn. In this example, if the exception is of type  FileNotFoundException, the first clause will execute. If it is of type IOException, the second clause will execute. If the exception is of neither type, the try-catch will terminate and the exception will propagate further.
+
+The finally clause
+------------------
+You can wrap an expression with a finally clause if you want to cause some code to execute no matter how the expression terminates. For example, you might want to be sure an open file gets closed even if a method exits by throwing an exception
+
+import java.io.FileReader
+val file = new FileReader("input.txt")
+try {
+// Use the file
+} 
+finally {
+file.close() // Be sure to close the file
+}
+
+Yielding a value
+----------------
+As with most other Scala control structures, try-catch-finally results in a value. For example, Listing 7.13 shows how you can try to parse a URL but use a default value if the URL is badly formed.
+
+Usually finally clauses do some kind of clean up such as closing a file; they should not normally change the value computed in the main body or a catch clause of the try.
+
+import java.net.URL
+import java.net.MalformedURLException
+def urlFor(path: String) =
+try {
+ new URL(path)
+} catch 
+{
+ case e: MalformedURLException => new URL("http://www.scalalang. org")
+}
+
+If you’re familiar with Java, it’s worth noting that Scala’s behavior differs from Java only because Java’s tryfinally does not result in a value. As in Java, if a finally clause includes an explicit return statement, or throws an exception, that return value or exception will “overrule” any previous one that originated in the try block or one of its catch clauses. For example, given this, rather contrived, function definition:
+
+def f(): Int = try { return 1 } finally { return 2 }
+
+calling f() results in 2. By contrast, given:
+
+def g(): Int = try { 1 } finally { 2 }
+
+calling g() results in 1. Both of these functions exhibit behavior that could surprise most programmers, thus it’s usually best to avoid returning values from finally clauses. The best way to think of finally clauses is as a way to ensure some side effect happens, such as closing an open file.
+
+7.5 Match expressions
+----------------------
+Scala’s match expression lets you select from a number of alternatives, just like switch statements in other languages. 
+
+In below example,  reads a food name from the argument list and prints a companion to that food. This match expression
+examines firstArg, which has been set to the first argument out of the argument list. If it is the string "salt", it prints "pepper", while if it is the string "chips", it prints "salsa", and so on. The default case is specified with an underscore (_), a wildcard symbol frequently used in Scala as a placeholder for a completely unknown value.
+
+val firstArg = if (args.length > 0) args(0) else ""
+firstArg match {
+case "salt" => println("pepper")
+case "chips" => println("salsa")
+case "eggs" => println("bacon")
+case _ => println("huh?")
+}
+
+There are a few important differences from Java’s switch statement. One is that any kind of constant, as well as other things, can be used in cases in Scala, not just the integer-type and enum constants of Java’s case statements.
+
+Another difference is that there are no breaks at the end of each alternative. Instead the break is implicit, and there is no fall through from one alternative to the next. The common case—not falling through—becomes shorter, and a source of errors is avoided because programmers can no longer fall through by accident.
+
+The most significant difference from Java’s switch, however, may  be that match expressions result in a value. In the previous example, each alternative in the match expression prints out a value. It would work just as well to yield the value rather than printing it as shown below.
+
+The value that results from this match expression is stored in the friend variable. Aside from the code getting shorter (in number of tokens, anyway), the code now disentangles two separate concerns: first it chooses a food, and then it prints it.
+
+val firstArg = if (!args.isEmpty) args(0) else ""
+val friend = firstArg match {
+case "salt" => "pepper"
+case "chips" => "salsa"
+case "eggs" => "bacon"
+case _ => "huh?"
+}
+println(friend)
+
+7.6 Living without break and continue
+-------------------------------------
+You may have noticed that there has been no mention of break or continue. Scala leaves out these commands because they do not mesh well with function literals, a feature described in the next chapter. It is clear what continue means inside a while loop, but what would it mean inside a function literal? While Scala supports both imperative and functional styles of programming, in this case it leans slightly towards functional programming in exchange for simplifying the language. Do not worry, though. There are many ways to program without break and continue, and if you take advantage of function literals, those alternatives can often be shorter than the original code.
+
+If after all this discussion you still feel the need to use break, there’s help in Scala’s standard library. Class Breaks in package scala.util.control offers a break method, which can be used to exit the an enclosing block that’s marked with breakable. Here an example how this library-supplied break method could be applied:
+
+import scala.util.control.Breaks._
+import java.io._
+val in = new BufferedReader(new InputStreamReader(System.in))
+breakable {
+while (true) 
+{
+ println("? ")
+ if (in.readLine() == "") break
+}
+}
+
+7.7 Variable scope
+------------------
+Now that you’ve seen Scala’s built-in control structures, we’ll use them in this section to explain how scoping works in Scala.
+
+Please see the example-4 in Intelli-J.
+
+Once a variable is defined, you can’t define a new variable with the same name in the same scope. For example, the following script with two variables named a in the same scope would not compile:
+
+val a = 1
+val a = 2 // Does not compile
+
+println(a)
+
+You can, on the other hand, define a variable in an inner scope that has the same name as a variable in an outer scope. The following script would compile and run:
+val a = 1;
+{
+ val a = 2 // Compiles just fine
+ println(a)
+}
+println(a)
+
+When executed, the script shown previously would print 2 then 1, because the a defined inside the curly braces is a different variable, which is in scope only until the closing curly brace.5 
+
+One difference to note between Scala and Java is that unlike Scala, Java will not let you create a variable in an inner scope that has the same name as a variable in an outer scope. In a Scala program, an inner variable is said to shadow a like-named outer variable, because the outer variable becomes invisible in the inner scope
+
+Keep in mind that such code can be very confusing to readers, because variable names adopt new meanings in nested scopes. It is usually better to choose a new, meaningful variable name rather than to shadow an outer variable.
+
+7.8 Refactoring imperative-style code
+-------------------------------------
+Please see the PDF.

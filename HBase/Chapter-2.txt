@@ -1,0 +1,17 @@
+Chapter 2: Apache HBase and HDFS
+--------------------------------
+Apache HBase runs on HDFS as the underlying filesysystem and benefits from HDFS features such as data reliability, scalability, and durability. 
+
+HBase stores data as Store Files (HFiles) on the HDFS Datanodes. HFile is the file format for HBase and org.apache.hadoop.hbase. io.hfile.HFile is a Java class.HFile is an HBase-specific file format that is based on the TFile binary file format. A Store File is a lightweight wrapper around the HFile.
+
+In addition to storing table data HBase also stores the write-ahead logs (WALs), which store data before it is written to HFiles on HDFS. 
+
+HBase makes use of the class to connect to NameNode to get block locations for Datanode blocks and add data to the Datanode blocks. HBase leverages the fault tolerance provided by the Hadoop Distributed File System (HDFS). HBase requires some configuration at the client side (HBase) and the server side (HDFS).
+
+HBase makes use of three types of files:
+
+-> WALs or HLogs
+
+-> Data files (also known as store files or HFiles)
+
+-> 0 length files: References (symbolic or logical links)

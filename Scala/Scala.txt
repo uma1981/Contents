@@ -1,0 +1,51 @@
+Step 2. Define some variables
+-----------------------------
+A val is similar to a final variable in Java. Once initialized, a val can never be reassigned. A var, by contrast, is similar to a non-final variable in Java. A var can be reassigned throughout its lifetime. Here’s a val definition:
+
+scala> val msg = "Hello, world!"
+msg: java.lang.String = Hello, world!
+
+This example illustrates type inference, Scala’s ability to figure out types you leave off. In this case, because you initialized msg with a string literal, Scala inferred the type of msg to be String.When the Scala interpreter (or compiler) can infer types, it is often best to let it do so rather than fill the code with unnecessary, explicit type annotations. You
+can, however, specify a type explicitly if you wish
+
+Step 3. Define some functions
+-----------------------------
+Function definitions start with def.
+
+A type annotation must follow every function parameter, preceded by a colon, because the Scala compiler (and interpreter, but from now on we’ll just say compiler) does not infer function parameter types.
+
+After the close parenthesis of max’s parameter list you’ll find another “: Int” type annotation. This one defines the result type of the max function itself.6
+
+Sometimes the Scala compiler will require you to specify the result type of a function. If the function is recursive,7 for example, you must explicitly specify the function’s result type. In the case of max however, you may leave the result type off and the compiler will infer it
+
+Step 4. Write some Scala scripts
+--------------------------------
+You can write some scala scripts and put it in a file.
+
+Step 5. Loop with while; decide with if
+-------------------------------------------
+In this version, you’ve replaced the println call with a print call, so that all the arguments will be printed out on the same line.
+
+Note that in Scala, as in Java, you must put the boolean expression for a while or an if in parentheses.
+
+In other words, you can’t say in Scala things like if i < 10 as you can in a language such as Ruby. You must say if (i < 10) in Scala.
+
+Another similarity to Java is that if a block has only one statement, you can optionally leave off the curly braces,
+
+Scala does use semicolons to separate statements as in Java, except that in Scala the semicolons are very often optional, giving some welcome relief to your right little finger. you can give semcolon if you need
+
+var i = 0;
+while (i < args.length) {
+if (i != 0) {
+print(" ");
+}
+print(args(i));
+i += 1;
+}
+println();
+
+Step 6. Iterate with foreach and for
+------------------------------------
+args.foreach(arg => println(arg))
+
+please see the example in intelli J

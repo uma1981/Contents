@@ -1,0 +1,53 @@
+HBase depends on Hadoop for two separate concerns. Hadoop MapReduce provides a distributed computation framework for highthroughput
+data access. The Hadoop Distributed File System (HDFS) gives HBase a storage layer providing availability and reliability.
+
+3.3 HBase in distributed mode
+-----------------------------
+It’s also sometimes referred to as the Hadoop Database, and that’s where it got its name. Theoretically, HBase can work on top of any distributed file system. It’s just that it’s tightly integrated with HDFS
+	
+3.3.1 Splitting and distributing big tables
+-------------------------------------------
+Just as in any other database, tables in HBase comprise rows and columns, albeit with a different kind of schema. Tables in HBase can scale to billions of rows and millions of columns. The size of each table can run into terabytes and sometimes even petabytes.
+It’s clear at that scale that the entire table can’t be hosted on a single machine. Instead, tables are split into smaller chunks that are distributed across multiple servers. These smaller chunks are called regions (figure 3.6). Servers that host regions are
+called RegionServers
+
+Please the picture(figure 3.6) in page 63
+
+RegionServers are typically collocated(Group/Side by side) with HDFS DataNodes (figure 3.7) on the same physical hardware, although that’s not a requirement. The only requirement is that RegionServers should be able to access HDFS.The master process does the distribution of regions among RegionServers, and each RegionServer typically hosts multiple regions.
+
+Please the picture(figure 3.7) in page 63
+
+Given that the underlying data is stored in HDFS, which is available to all clients as a single namespace, all RegionServers have access to the same persisted files in the file system and can therefore host any region (figure 3.8). By physically collocating(Group/Side by side) Data- Nodes and RegionServers, you can use the data locality property; that is, RegionServers can theoretically read and write to the local DataNode as the primary DataNode.
+
+Please the picture(figure 3.8) in page 63
+
+The size of individual regions is governed by the configuration parameter hbase.hregion.max.filesize, which can be configured in the hbase-site.xml file of your
+deployment. When a region becomes bigger than that size (as you write more data into it), it gets split into two regions.
+
+3.3.2 How do I find my region?
+------------------------------
+You’ve learned that tables are split into regions and regions are assigned to Region-Servers without any predefined assignment rules. Region assignment happens when
+regions split (as they grow in size), when RegionServers die, or when new RegionServers are added to the deployment. An important question to ask here is, “When a
+region is assigned to a RegionServer, how does my client application (the one doing reads and writes) know its location?”
+
+Two special tables in HBase, -ROOT- and .META., help find where regions for various tables are hosted. Like all tables in HBase, -ROOT- and .META. are also split into
+regions. -ROOT- and .META. are both special tables, but -ROOT- is more special than .META.; -ROOT- never splits into more than one region. .META. behaves like all other tables and can split into as many regions as required.
+
+When a client application wants to access a particular row, it goes to the -ROOTtable and asks it where it can find the region responsible for that particular row.
+-ROOT- points it to the region of the .META. table that contains the answer to that question. The .META. table consists of entries that the client application uses to determine which RegionServer is hosting the region in question.
+
+Please the picture(figure 3.9) in page 65
+
+Let’s put -ROOT- and .META. into the example; see figure 3.10. Note that the region assignments shown here are arbitrary and don’t represent how they will happen
+when such a system is deployed.
+
+Please the picture(figure 3.10) in page 66 - This figure gives detailed information.
+
+The entry point for an HBase system is provided by another system called ZooKeeper. The client interaction with the system happens in steps, where ZooKeeper is the
+point of entry, as mentioned earlier. These steps are highlighted in figure 3.11 in page 67- This gives detailed information.
+
+3.3.3 How do I find the -ROOT- table?
+-------------------------------------
+You just learned how the -ROOT- and .META. tables help you find out other regions in the system. At this point, you might be left with a question: “Where is the -ROOTtable?”
+
+Let’s figure that out now.

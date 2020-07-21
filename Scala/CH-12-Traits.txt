@@ -1,0 +1,241 @@
+Chapter 12
+----------
+Traits
+----------
+Traits are a fundamental unit of code reuse in Scala. A trait encapsulates method and field definitions, which can then be reused by mixing them into classes. Unlike class inheritance, in which each class must inherit from just one superclass, a class can mix in any number of traits. 
+
+12.1 How traits work
+--------------------
+A trait definition looks just like a class definition except that it uses the keyword trait.
+
+trait Philosophical {
+def philosophize() {
+println("I consume memory, therefore I am!")
+}
+}
+
+This trait is named Philosophical. It does not declare a superclass, so like a class, it has the default superclass of AnyRef. It defines one method, named philosophize, which is concrete.
+
+Once a trait is defined, it can be mixed in to a class using either the extends or with keywords.
+
+class Frog extends Philosophical {
+override def toString = "green"
+}
+
+scala> val frog = new Frog
+frog: Frog = green
+
+scala> frog.philosophize()
+I consume memory, therefore I am!
+
+You can use the extends keyword to mix in a trait; in that case you implicitly inherit the trait’s superclass.Methods inherited from a trait can be used just like methods inherited from a superclass
+
+Please see the example in intelli-J
+
+A trait also defines a type. Here’s an example in which Philosophical is used as a type:
+
+scala> val phil: Philosophical = frog
+phil: Philosophical = green
+
+scala> phil.philosophize()
+I consume memory, therefore I am!
+
+The type of phil is Philosophical, a trait. Thus, variable phil could have been initialized with any object whose class mixes in Philosophical.
+
+If you wish to mix a trait into a class that explicitly extends a superclass, you use extends to indicate the superclass and with to mix in the trait. Please see below example.
+
+class Animal
+class Frog extends Animal with Philosophical {
+override def toString = "green"
+}
+
+If you want to mix in multiple traits, you add more with clauses. For example, given a trait HasLegs, you could mix both Philosophical and HasLegs into Frog
+
+class Animal
+trait HasLegs
+class Frog extends Animal with Philosophical with HasLegs {
+override def toString = "green"
+}
+
+In the examples you’ve seen so far, class Frog has inherited an implementation of philosophize from trait Philosophical. Alternatively, Frog could override philosophize. The syntax looks the same as overriding a method declared in a superclass. Here’s an example:
+
+class Animal
+class Frog extends Animal with Philosophical {
+override def toString = "green"
+override def philosophize() {
+println("It ain't easy being "+ toString +"!")
+}
+}
+
+Because this new definition of Frog still mixes in trait Philosophical, you can still use it from a variable of that type. But because Frog overrides Philosophical’s implementation of philosophize, you’ll get a new behavior when you call it:
+
+scala> val phrog: Philosophical = new Frog
+phrog: Philosophical = green
+
+scala> phrog.philosophize()
+It ain't easy being green!
+
+At this point you might philosophize that traits are like Java interfaces with concrete methods, but they can actually do much more. Traits can, for example, declare fields and maintain state.
+
+In fact, you can do anything in a trait definition that you can do in a class definition, and the syntax looks exactly the same, with only two exceptions. 
+
+First, a trait cannot have any “class” parameters, i.e., parameters passed to the primary constructor of a class. In other words, although you could define a class like this:
+
+class Point(x: Int, y: Int)
+
+The following attempt to define a trait would not compile:
+
+trait NoPoint(x: Int, y: Int) // Does not compile
+
+The other difference between classes and traits is that whereas in classes, super calls are statically bound, in traits, they are dynamically bound.
+
+12.2 Thin versus rich interfaces
+--------------------------------
+Not much to read.
+
+12.3 Example - Rectangular objects
+--------------------------------
+Please see the example in intelli-J
+
+12.4 The Ordered trait
+----------------------
+Comparison is another domain where a rich interface is convenient. Whenever you compare two objects that are ordered, it is convenient if you use a single method call to ask about the precise comparison you want. 
+
+If you want “is less than,” you would like to call <, and if you want “is less than or equal,” you would like to call <=. With a thin comparison interface, you might just have the < method, and you would sometimes have to write things like “(x < y) || (x == y)”.A rich interface would provide you with all of the usual comparison operators, thus allowing you to directly write things like “x <= y”.
+
+Before looking at Ordered, imagine what you might do without it. Suppose you took the Rational class from Chapter 6 and added comparison operations to it. You would end up with something like this
+
+class Rational(n: Int, d: Int) 
+{
+	// ...
+	def < (that: Rational) =
+	this.numer * that.denom > that.numer * this.denom
+	def > (that: Rational) = that < this
+	def <= (that: Rational) = (this < that) || (this == that)
+	def >= (that: Rational) = (this > that) || (this == that)
+}
+
+Overall, there is quite a lot of boilerplate code in this class which would be the same in any other class that implements comparison operations.
+
+This problem is so common that Scala provides a trait to help with it. The trait is called Ordered. To use it, you replace all of the individual comparison methods with a single compare method. The Ordered trait then defines <, >, <=, and >= for you in terms of this one method. Thus, trait Ordered allows you to enrich a class with comparison methods by implementing only one method called compare.
+
+There are just two things to do. First, this version of Rational mixes in the Ordered trait. Now all you need to know is that when you mix in Ordered, you must actually mix in Ordered[C], where C is the class whose elements you compare. In this case, Rational mixes in Ordered[Rational].
+
+The second thing you need to do is define a compare method for comparing two objects. This method should compare the receiver, this, with the object passed as an argument to the method. It should return an integer that is zero if the objects are the same, negative if receiver is less than the argument, and positive if the receiver is greater than the argument.
+
+Please see the example in intelli-J
+
+12.5 Traits as stackable modifications
+--------------------------------------
+
+You have now seen one major use of traits: turning a thin interface into a rich one. Now we’ll turn to a second major use: providing stackable modifications
+to classes. Traits let you modify the methods of a class, and they do so in a way that allows you to stack those modifications with each other.
+
+As an example, consider stacking modifications to a queue of integers.The queue will have two operations: put, which places integers in the queue, and get, which takes them back out. Queues are first-in, first-out, so get should return the integers in the same order they were put in the queue.
+
+Please see the example in Intelli-J
+
+
+Major use of trait: providing stackable modifications to classes. Traits let you modify the methods of a class, and they do so in a way that allows you to stack those modifications with each other.
+
+Now take a look at using traits to modify this behavior.
+
+
+The Doubling trait has two funny things going on. The first is that it declares a superclass, IntQueue. This declaration means that the trait can only be mixed into a class that also extends IntQueue. Thus, you can mix Doubling into BasicIntQueue, but not into Rational.
+
+trait Doubling extends IntQueue 
+{
+	abstract override def put(x: Int) { super.put(2 * x) }
+}
+
+The second funny thing is that the trait has a super call on a method declared abstract. Such calls are illegal for normal classes, because they will certainly fail at run time. For a trait, however, such a call can actually succeed. Since super calls in a trait are dynamically bound, the super call in trait Doubling will work so long as the trait is mixed in after another trait or class that gives a concrete definition to the method.
+
+To tell the compiler you are doing this on purpose, you must mark such methods as abstract override. This combination of modifiers is only allowed for members of traits, not classes, and it means that the trait must be mixed into some class that has a concrete definition of the method in question.
+
+In the first line in this interpreter session, we define class MyQueue, which extends BasicIntQueue and mixes in Doubling. We then put a 10 in the queue, but because Doubling has been mixed in, the 10 is doubled. When we get an integer from the queue, it is a 20.
+
+Note that MyQueue defines no new code. It simply identifies a class and mixes in a trait. In this situation, you could supply “BasicIntQueue with Doubling” directly to new instead of defining a named class. It would look
+
+scala> val queue = new BasicIntQueue with Doubling
+queue: BasicIntQueue with Doubling = $anon$1@5fa12d
+scala> queue.put(10)
+scala> queue.get()
+res14: Int = 20
+
+To see how to stack modifications, we need to define the other two modification traits, Incrementing and Filtering.
+
+trait Incrementing extends IntQueue 
+{
+	abstract override def put(x: Int) { super.put(x + 1) }
+}
+trait Filtering extends IntQueue 
+{
+	abstract override def put(x: Int) 
+	{
+		if (x >= 0) super.put(x)
+	}
+}
+
+Given these modifications, you can now pick and choose which ones you want for a particular queue. For example
+
+scala> val queue = (new BasicIntQueue with Incrementing with Filtering)
+queue: BasicIntQueue with Incrementing with Filtering...
+
+scala> queue.put(1);
+queue.put(0); 
+queue.put(1);
+
+scala> queue.get()
+res15: Int = 1
+
+scala> queue.get()
+res16: Int = 2
+
+The order of mixins is significant.2 The precise rules are given in the following section, but, roughly speaking, traits further to the right take effect first. When you call a method on a class with mixins, the method in the trait furthest to the right is called first. If that method calls super, it invokes the method in the next trait to its left, and so on. In the previous example, Filtering’s put is invoked first, so it removes integers that were negative to begin with. Incrementing’s put is invoked second, so it adds one to those integers that remain.
+
+If you reverse the order, first integers will be incremented, and then the integers that are still negative will be discarded:
+
+scala> val queue = (new BasicIntQueue with Filtering with Incrementing)
+queue: BasicIntQueue with Filtering with Incrementing...
+
+scala> queue.put(1);
+queue.put(0); 
+queue.put(1);
+
+scala> queue.get()
+res17: Int = 0
+
+scala> queue.get()
+res18: Int = 1
+
+scala> queue.get()
+res19: Int = 2
+
+You can define sixteen different classes by mixing in these three traits in different combinations and orders.
+
+12.6 Why not multiple inheritance?
+----------------------------------
+
+Traits are a way to inherit from multiple class-like constructs, but they differ in important ways from the multiple inheritance present in many languages.
+
+One difference is especially important: the interpretation of super. With multiple inheritance, the method called by a super call can be determined right where the call appears.
+
+With traits, the method called is determined by a linearization of the classes and traits that are mixed into a class.This is the difference that enables the stacking of modifications described in the previous section.
+
+Just look this one more time in PDF..
+
+12.7 To trait, or not to trait?
+-------------------------------
+Whenever you implement a reusable collection of behavior, you will have to decide whether you want to use a trait or an abstract class. There is no firm rule, but this section contains a few guidelines to consider.
+
+If the behavior will not be reused, then make it a concrete class. It is not reusable behavior after all.
+
+If it might be reused in multiple, unrelated classes, make it a trait. Only traits can be mixed into different parts of the class hierarchy.
+
+If you want to inherit from it in Java code, use an abstract class. Since traits with code do not have a close Java analog, it tends to be awkward to inherit from a trait in a Java class.
+
+If you plan to distribute it in compiled form, and you expect outside groups to write classes inheriting from it, you might lean towards using an abstract class. The issue is that when a trait gains or loses a member, any classes that inherit from it must be recompiled.
+
+If efficiency is very important, lean towards using a class. Most Java runtimes make a virtual method invocation of a class member a faster operation than an interface method invocation. Traits get compiled to interfaces and therefore may pay a slight performance overhead.
+
+If you still do not know, after considering the above, then start by making it as a trait. You can always change it later, and in general using a trait keeps more options open.

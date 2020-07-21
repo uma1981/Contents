@@ -1,0 +1,292 @@
+HiveQL: Data Definition
+-----------------------
+
+HiveQL is the Hive query language.Hive offers no support for rowlevel inserts, updates, and deletes. Hive doesn’t support transactions.
+
+Databases in Hive
+-----------------
+
+hive> CREATE DATABASE financials;
+
+Hive will throw an error if financials already exists. You can suppress these warnings with this variation:
+
+hive> CREATE DATABASE IF NOT EXISTS financials;
+
+You can also use the keyword SCHEMA instead of DATABASE in all the database-related commands. 
+
+At any time, you can see the databases that already exist as follows:
+
+hive> SHOW DATABASES;
+
+If you have a lot of databases, you can restrict the ones listed.The following example lists only those databases that start with the letter h and end with any other characters (the .* part):
+
+hive> SHOW DATABASES LIKE 'h.*';
+
+Hive will create a directory for each database. Tables in that database will be stored in subdirectories of the database directory. The exception is tables in the default database, which doesn’t have its own directory.
+
+The database directory is created under a top-level directory specified by the property hive.metastore.warehouse.dir.Assuming you are using the default value for this property, /user/hive/warehouse, when the financials database is created, Hive will create the directory /user/hive/warehouse/financials.db. Note the .db extension.
+
+You can override this default location for the new directory as shown in this example:
+
+hive> CREATE DATABASE financials
+> LOCATION '/my/preferred/directory';
+
+You can add a descriptive comment to the database and DESCRIBE command used to shown that.
+
+hive> CREATE DATABASE financials
+> COMMENT 'Holds all financial tables';
+
+hive> DESCRIBE DATABASE financials;
+financials Holds all financial tables
+hdfs://master-server/user/hive/warehouse/financials.db
+
+Note that DESCRIBE DATABASE also shows the directory location for the database
+
+To be clear, hdfs:///user/hive/warehouse/financials.db is equivalent to hdfs://masterserver/user/hive/warehouse/financials.db, where master-server is your master node’s DNS name and optional port
+
+Lastly, you can associate key-value properties with the database. You can use command DESCRIBE DATABASE EXTENDED financials;
+
+hive> CREATE DATABASE financials
+> WITH DBPROPERTIES ('creator' = 'Mark Moneybags', 'date' = '2012-01-02');
+
+hive> DESCRIBE DATABASE financials;
+financials hdfs://master-server/user/hive/warehouse/financials.db
+
+hive> DESCRIBE DATABASE EXTENDED financials;
+financials hdfs://master-server/user/hive/warehouse/financials.db
+{date=2012-01-02, creator=Mark Moneybags);
+
+The USE command sets a database as your working database
+
+Unfortunately, there is no command to show you which database is your current working database! Fortunately, it’s always safe to repeat the USE … command
+
+There is a property to print the current database as part of the prompt (Hive v0.8.0 and later):
+
+hive> set hive.cli.print.current.db=true;
+
+hive (financials)> USE default;
+
+hive (default)> set hive.cli.print.current.db=false;
+
+you can drop a database:
+hive> DROP DATABASE IF EXISTS financials;
+
+The IF EXISTS is optional and suppresses warnings if financials doesn’t exist.By default, Hive won’t permit you to drop a database if it contains tables. You can either drop the tables first or append the CASCADE keyword to the command, which will cause the Hive to drop the tables in the database first:
+
+hive> DROP DATABASE IF EXISTS financials CASCADE;
+
+When a database is dropped, its directory is also deleted
+
+Alter Database
+--------------
+You can set key-value pairs in the DBPROPERTIES associated with a database using the ALTER DATABASE command. No other metadata about the database can be changed,
+including its name and directory location:
+
+hive> ALTER DATABASE financials SET DBPROPERTIES ('edited-by' = 'Joe Dba');
+
+There is no way to delete or “unset” a DBPROPERTY.
+
+Creating Tables
+---------------
+The CREATE TABLE statement follows SQL conventions, but Hive’s version offers significant extensions to support a wide range of flexibility where the data files for tables are stored, the formats used, etc
+
+CREATE TABLE IF NOT EXISTS mydb.employees (
+	name STRING COMMENT 'Employee name',
+	subordinates ARRAY<STRING> COMMENT 'Names of subordinates',
+	deductions MAP<STRING, FLOAT>
+	COMMENT 'Keys are deductions names, values are percentages',
+	address STRUCT<street:STRING, city:STRING, state:STRING, zip:INT>
+	COMMENT 'Home address')
+COMMENT 'Description of the table' 
+TBLPROPERTIES ('creator'='me', 'created_at'='2012-01-02 10:00:00', ...)
+LOCATION '/user/hive/warehouse/mydb.db/employees';
+
+First, note that you can prefix a database name, mydb in this case, if you’re not currently working in the target database.
+
+If the schema specified differs from the schema in the table that already exists, Hive won’t warn you. If your intention is for this table to have the new schema, you’ll have to drop the old table, losing your data, and then re-create it.
+
+You can add a comment to any column/table.
+
+Hive automatically adds two table properties: last_modified_by holds the username of the last user to modify the table, and last_modified_time holds the epoch time in seconds of that modification.
+
+Finally, you can optionally specify a location for the table data.
+
+By default, Hive always creates the table’s directory under the directory for the enclosing database. The exception is the default database. It doesn’t have a directory under /user/hive/warehouse, so a table in the default database will have its directory created directly in /user/hive/warehouse (unless explicitly overridden).
+
+You can also copy the schema (but not the data) of an existing table:
+
+CREATE TABLE IF NOT EXISTS mydb.employees2
+LIKE mydb.employees;
+
+This version also accepts the optional LOCATION clause, but note that no other properties,including the schema, can be defined; they are determined from the original table.
+
+The SHOW TABLES command lists the tables. With no additional arguments, it shows the tables in the current working database
+
+hive> USE mydb;
+hive> SHOW TABLES;
+employees
+table1
+table2
+
+If we aren’t in the same database, we can still list the tables in that database:
+
+hive> SHOW TABLES IN mydb;
+employees
+table1
+table2
+
+If we have a lot of tables, we can limit the ones listed using a regular expression
+
+hive> SHOW TABLES 'empl.*';
+employees
+
+We can also use the DESCRIBE EXTENDED mydb.employees command to show details about the table.
+
+hive> DESCRIBE EXTENDED mydb.employees;
+
+Replacing EXTENDED with FORMATTED provides more readable but also more verbose output.
+
+If you only want to see the schema for a particular column,append the column to the table name. Here, EXTENDED adds no additional output:
+
+hive> DESCRIBE mydb.employees.salary;
+
+We said that the last_modified_by and last_modified_time table properties are automatically created. However, they are only shown in the Detailed Table Information
+
+Managed/Internal Tables
+--------------
+The tables we have created so far are called managed tables or sometimes called internal tables, because Hive controls the lifecycle of their data (more or less). As we’ve seen, Hive stores the data for these tables in a subdirectory under the directory defined by hive.metastore.warehouse.dir (e.g., /user/hive/warehouse), by default.
+
+When we drop a managed table (see “Dropping Tables” on page 66), Hive deletes the data in the table.
+
+However, managed tables are less convenient for sharing with other tools. For example,suppose we have data that is created and used primarily by Pig or other tools, but we want to run some queries against it, but not give Hive ownership of the data. We can define an external table that points to that data, but doesn’t take ownership of it.
+
+External tables
+----------------
+Suppose we are analyzing data from the stock markets. Periodically, we ingest the data for NASDAQ and the NYSE and we want to study this data with many tools.Let’s assume the data files are in the distributed filesystem directory /data/stocks.
+
+The following table declaration creates an external table that can read all the data files for this comma-delimited data in /data/stocks:
+CREATE EXTERNAL TABLE IF NOT EXISTS stocks (
+exchange STRING,
+symbol STRING,
+ymd STRING,
+price_open FLOAT,
+price_high FLOAT,
+price_low FLOAT,
+price_close FLOAT,
+volume INT,
+price_adj_close FLOAT)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+LOCATION '/data/stocks';
+
+The EXTERNAL keyword tells Hive this table is external and the LOCATION … clause is required to tell Hive where it’s located.Because it’s external, Hive does not assume it owns the data. Therefore, dropping the table does not delete the data, although the metadata for the table will be deleted. There are a few other small differences between managed and external tables, where some HiveQL constructs are not permitted for external tables. We’ll discuss those when we come to them.
+
+However, it’s important to note that the differences between managed and external tables are smaller than they appear at first. Even for managed tables, you know where
+they are located, so you can use other tools, hadoop dfs commands, etc., to modify and even delete the files in the directories for managed tables.
+
+Near the end of the Detailed Table Information output, you will see the following for managed tables:
+... tableType:MANAGED_TABLE)
+
+For external tables, you will see the following:
+... tableType:EXTERNAL_TABLE)
+
+As for managed tables, you can also copy the schema (but not the data) of an existing table:
+
+CREATE EXTERNAL TABLE IF NOT EXISTS mydb.employees3
+LIKE mydb.employees
+LOCATION '/path/to/data';
+
+If you omit the EXTERNAL keyword and the original table is external, the new table will also be external. If you omit EXTERNAL and the original table is managed, the new table will also be managed. However, if you include the EXTERNAL keyword and the original table is managed, the new table will be external. Even in this scenario, the LOCATION clause will still be optional.
+
+Below are the some of the differences
+-> ARCHIVE/UNARCHIVE/TRUNCATE/MERGE/CONCATENATE only work for managed tables
+-> Query Results Caching only works for managed tables
+-> Some Materialized View features only work on managed tables.
+-> ACID/Transactional only works for managed tables
+
+-> DROP deletes data for managed tables while it only deletes metadata for external ones
+-> Only the RELY constraint is allowed on external tables
+-> If the structure or partitioning of an external table is changed, an MSCK REPAIR TABLE table_name statement can be used to refresh metadata information.
+
+
+Partitioned, Managed Tables
+----------------------------
+The general notion of partitioning data is an old one. It can take many forms, but often it’s used for distributing load horizontally, moving data physically closer to its most frequent users, and other purposes.
+
+Hive has the notion of partitioned tables,that they have important performance benefits.
+
+Partitoned topic have to read one more time from pdf and create notes.
+##################################################################################################
+Dropping Tables
+----------------
+DROP TABLE IF EXISTS employees;
+
+The IF EXISTS keywords are optional. If not used and the table doesn’t exist, Hive returns an error.
+
+For managed tables, the table metadata and data are deleted.
+
+Actually, if you enable the Hadoop Trash feature, which is not on by default, the data is moved to the .Trash directory in the distributed filesystem for the user, which in HDFS is /user/$USER/.Trash. To enable this feature, set the property fs.trash.interval to a reasonable positive number. It’s the number of minutes between “trash checkpoints”; 1,440 would be 24 hours. While it’s not guaranteed to work for all versions of all distributed filesystems, if you accidentally drop a managed table with important data, you may be able to re-create the table, re-create any partitions, and then move the files from .Trash to the correct directories (using the filesystem commands) to restore the data.
+
+For external tables, the metadata is deleted but the data is not.
+
+Alter Table
+-----------
+ALTER TABLE modifies table metadata only. The data for the table is untouched. It’s up to you to ensure that any modifications are consistent with the actual data.
+
+Renaming a Table
+-----------------
+Use this statement to rename the table log_messages to logmsgs:
+
+ALTER TABLE log_messages RENAME TO logmsgs;
+
+Adding, Modifying, and Dropping a Table Partition
+-------------------------------------------------
+Above topic have to read one more time from pdf and create notes.
+
+Changing Columns
+----------------
+You can rename a column, change its position, type, or comment:
+
+ALTER TABLE log_messages
+CHANGE COLUMN hms hours_minutes_seconds INT
+COMMENT 'The hours, minutes, and seconds part of the timestamp'
+AFTER severity;
+
+You have to specify the old name, a new name, and the type, even if the name or type is not changing. The keyword COLUMN is optional as is the COMMENT clause. If you aren’t moving the column, the AFTER other_column clause is not necessary. In the example shown, we move the column after the severity column. If you want to move the column to the first position, use FIRST instead of AFTER other_column.
+
+As always, this command changes metadata only. If you are moving columns, the data must already match the new schema or you must change it to match by some other means.
+
+Adding Columns
+--------------
+You can add new columns to the end of the existing columns, before any partition columns.
+
+ALTER TABLE log_messages ADD COLUMNS (
+app_name STRING COMMENT 'Application name',
+session_id LONG COMMENT 'The current session id');
+
+The COMMENT clauses are optional, as usual. If any of the new columns are in the wrong position, use an ALTER COLUMN table CHANGE COLUMN statement for each one to move it to the correct position.
+
+Deleting or Replacing Columns
+-----------------------------
+
+The following example removes all the existing columns in the table and replaces them with the new columns specified below:
+
+ALTER TABLE log_messages REPLACE COLUMNS (
+hours_mins_secs INT COMMENT 'hour, minute, seconds from timestamp',
+severity STRING COMMENT 'The message severity'
+message STRING COMMENT 'The rest of the message');
+
+This statement effectively renames the original hms column and removes the server andprocess_id columns from the original schema definition. As for all ALTER statements, only the table metadata is changed.
+
+The REPLACE statement can only be used with tables that use one of the native SerDe modules: DynamicSerDe or MetadataTypedColumnsetSerDe. Recall that the SerDe determines how records are parsed into columns (deserialization) and how a record’s columns are written to storage (serialization). See Chapter 15 for more details on SerDes.
+
+Alter Table Properties
+-----------------------
+You can add additional table properties or modify existing properties, but not remove
+them:
+
+ALTER TABLE log_messages SET TBLPROPERTIES (
+'notes' = 'The process id is no longer captured; this column is always NULL');
+
+Alter Storage Properties
+-------------------------
+READ the above topic from book

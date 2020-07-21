@@ -1,0 +1,81 @@
+HiveQL: Indexes
+---------------
+Hive has limited indexing capabilities.you can build an index on columns to speed some operations. The index data for a table is stored in another table.
+
+Indexing is also a good alternative to partitioning when the logical partitions would actually be too numerous and small to be useful.
+
+Indexing can aid in pruning some blocks from a table as input for a MapReduce job.
+
+Maintaining an index requires extra disk space and building an index has a processing cost. The user must weigh these costs against the benefits they offer when querying a table.
+
+Creating an Index
+-----------------
+
+Let’s create an index for our managed table below
+
+CREATE TABLE employees (
+name STRING,
+salary FLOAT,
+subordinates ARRAY<STRING>,
+deductions MAP<STRING, FLOAT>,
+address STRUCT<street:STRING, city:STRING, state:STRING, zip:INT>
+)
+PARTITIONED BY (country STRING, state STRING);
+Let’s index on the country partition only:
+
+
+CREATE INDEX employees_index
+ON TABLE employees (country)
+AS 'org.apache.hadoop.hive.ql.index.compact.CompactIndexHandler'
+WITH DEFERRED REBUILD
+IDXPROPERTIES ('creator = 'me', 'created_at' = 'some_time')
+IN TABLE employees_index_table
+PARTITIONED BY (country, name)
+COMMENT 'Employees indexed by country and name.';
+
+In this case, we did not partition the index table to the same level of granularity as the original table. We could choose to do so. If we omitted the PARTITIONED BY clause completely, the index would span all partitions of the original table.
+
+It’s not a requirement for the index handler to save its data in a new table, but if it does, the IN TABLE ... clause is used.
+
+The AS ... clause specifies the index handler, a Java class that implements indexing.
+
+Bitmap Indexes
+---------------
+Hive v0.8.0 adds a built-in bitmap index handler. Bitmap indexes are commonly used for columns with few distinct values. Here is our previous example rewritten to use the bitmap index handler:
+
+CREATE INDEX employees_index
+ON TABLE employees (country)
+AS 'BITMAP'
+WITH DEFERRED REBUILD
+IDXPROPERTIES ('creator = 'me', 'created_at' = 'some_time')
+IN TABLE employees_index_table
+PARTITIONED BY (country, name)
+COMMENT 'Employees indexed by country and name.';
+
+Rebuilding the Index
+--------------------
+If you specified WITH DEFERRED REBUILD, the new index starts empty. At any time, the index can be built the first time or rebuilt using the ALTER INDEX statement:
+
+ALTER INDEX employees_index
+ON TABLE employees
+PARTITION (country = 'US')
+REBUILD;
+
+If the PARTITION clause is omitted, the index is rebuilt for all partitions. There is no built-in mechanism to trigger an automatic rebuild of the index if the underlying table or a particular partition changes
+
+Showing an Index
+----------------
+The following command will show all the indexes defined for any column in the indexed table:
+
+SHOW FORMATTED INDEX ON employees;
+
+FORMATTED is optional. It causes column titles to be added to the output. You can also replace INDEX with INDEXES, as the output may list multiple indexes. 
+
+Dropping an Index
+-----------------
+Dropping an index also drops the index table, if any:
+
+DROP INDEX IF EXISTS employees_index ON TABLE employees;
+
+Hive won’t let you attempt to drop the index table directly with DROP TABLE. As always,IF EXISTS is optional and serves to suppress errors if the index doesn’t exist.
+If the table that was indexed is dropped, the index itself and its table is dropped. Similarly,if a partition of the original table is dropped, the corresponding partition index is also dropped.

@@ -1,0 +1,92 @@
+Chapter 32
+Actors and Concurrency
+------------------------
+Sometimes it helps in designing a program to specify that things happen independently, in parallel, concurrently.
+
+Scala augments Java’s native support by adding actors. Actors provide a concurrency model that is easier to work with and can, therefore, help you avoid many of the difficulties of using Java’s native concurrency model. This chapter will
+show you the basics of how to use Scala’s actors library.
+
+32.1 Trouble in paradise
+------------------------
+The Java platform comes with a built-in threading model based on shared data and locks. Each object is associated with a logical monitor, which can be used to control multi-threaded access to data.
+
+Unfortunately, programmers have found it very difficult to reliably build robust multi-threaded applications using the shared data and locks model, especially as applications grow in size and complexity.
+
+Making things worse, testing is not reliable with multi-threaded code.Since threads are non-deterministic, you might successfully test a program one thousand times, yet still the program could go wrong the first time it runs on a customer’s machine.
+
+Java 5 introduced java.util.concurrent, a library of concurrency utilities that provides higher level abstractions for concurrent programming. Using the concurrency utilities makes multi-threaded programming far less error prone.
+
+Scala’s actors library does address the fundamental problem by providing an alternative, share-nothing, message-passing model that programmers tend to find much easier to reason about. 
+
+Actors are a good first tool of choice when designing concurrent software, because they can help you avoid the deadlocks and race conditions that are easy to fall into when using the shared data and locks model.
+
+32.2 Actors and message passing
+-------------------------------
+An actor is a thread-like entity that has a mailbox for receiving messages. To implement an actor, you subclass scala.actors.Actor and implement the act method.
+
+This actor doesn’t do anything with its mailbox. It just prints a message five times and quits.
+
+import scala.actors._
+object SillyActor extends Actor 
+{
+	def act() 
+	{
+		for (i <--1 to 5) 
+		{
+		println("I'm acting!")
+		Thread.sleep(1000)
+		}
+	}
+}
+
+You start an actor by invoking its start method, similar to the way you start a Java thread:
+scala> SillyActor.start()
+I'm acting!
+res4: scala.actors.Actor = SillyActor$@1945696
+scala> I'm acting!
+I'm acting!
+I'm acting!
+I'm acting!
+
+Notice that the “I’m acting!” output is interleaved with the Scala shell’s output. This interleaving is due to the SillyActor actor running independently from the thread running the shell. Actors run independently from each other,
+too. For example, given this second actor:
+
+import scala.actors._
+object SeriousActor extends Actor {
+def act() 
+{
+	for (i <-- 1 to 5) {
+	println("To be or not to be.")
+	Thread.sleep(1000)
+	}
+}
+
+You could run two actors at the same time, like this:
+scala> SillyActor.start(); SeriousActor.start()
+res3: scala.actors.Actor = seriousActor$@1689405
+
+scala> To be or not to be.
+I'm acting!
+To be or not to be.
+I'm acting!
+To be or not to be.
+I'm acting!
+To be or not to be.
+I'm acting!
+To be or not to be.
+I'm acting!
+
+You can also create an actor using a utility method named actor in object scala.actors.Actor:
+
+scala> import scala.actors.Actor._
+scala> val seriousActor2 = actor {
+	for (i <--1 to 5)
+		println("That is the question.")
+	Thread.sleep(1000)
+}
+
+scala> That is the question.
+That is the question.
+That is the question.
+That is the question.
+That is the question.

@@ -1,0 +1,21 @@
+Spark Streaming
+---------------
+In addition to batch data processing, streaming data processing has become a must-have capability for any business that wants to harness the value of real-time data
+to either increase their competitive advantage or to improve their user experience. 
+
+With the advent of the Internet of Things, the volume and velocity of real-time data have increased even more than before. For Internet companies such as Facebook, LinkedIn, and Twitter, millions of social activities happening every second on their platforms are represented as streaming data.
+
+At a high level, streaming processing is about the continuous processing of unbounded streams of data. Doing this at scale, in a fault-tolerant and consistent
+manner, is quite a challenging task. Luckily, the stream processing engines such as Spark, Flink, Samza, Heron, and Kafka have been steadily and dramatically maturing
+over the last few years to enable businesses to build and operate complex stream processing application.
+
+Uber leverages streaming processing capabilities to understand the number of riders and drivers on its platform at near real-time, and these near real-time insights influence business decisions such as moving excess drivers from low-demand areas to higher-demand areas in a city.
+
+Streaming processing enables a faster reaction to the experiments by reducing the time it takes to understand an experiment’s effectiveness from days to hours. Fraud detection is an area that has embraced stream processing because of the benefits it gains from instant insights of fraud activities so that they can be either stopped or monitored.
+
+For large companies that have hundreds of online services, a common need is to monitor their health by processing the large volume of generated logs at near real-time via streaming data processing.
+
+Stream Processing
+-----------------
+In the world of big data, batch data processing became widely known with the introduction of Hadoop.The popular MapReduce framework is one of the components
+in the Hadoop ecosystem, and it became the king of batch data processing because of its capabilities and robustness.

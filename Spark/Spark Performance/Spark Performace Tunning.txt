@@ -1,0 +1,31 @@
+Point#1 -- Quantity Of Data Shuffled
+------------------------------------
+In General, avoiding shuffle will make your program run faster.
+
+1. Use the built in aggregateByKey() operator instead of writing your own aggregation
+2. Filter input earlier in the program rather than later.
+
+Point#2 -- Degree of Parallelism
+---------------------------------
+Please see the screenshot.
+
+Point#3 -- Cache Format
+-----------------------
+By default Spark will cache() data using MEMORY_ONLY level, deserialized JVM objects and its execution is fast but it have side effects, like it can be worse for GC pressure.
+
+MEMORY_ONLY_SER can help cut down on GC, by collecting million of objects into single one large buffer which is only one object from the perspective of JVM memory manager which is a huge performance implement for GC
+
+Point#4 -- Other Performance Tweets
+-----------------------------------
+Turn on speculative execution to help prevent stragglers
+conf.set("spark.speculation","true")
+
+Point#5 -- Use Reduce by key instead of group by Ke
+---------------------------------------------------
+groupByKey() - Copies all data over the network
+
+reduceByKey() - Reduces locally per key, before shuffling.
+
+First open the Spark UI and go to executors tab, make sure all the executors are running and enough memory they have to run the executors.
+
+Next go to stages tab and click on one stage to get all tasks for the selected stage.

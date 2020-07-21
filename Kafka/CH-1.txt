@@ -1,0 +1,119 @@
+LinkedIn built Kafka as a distributed, fault-tolerant, publish/subscribe system. It records messages organized into topics. Applications can produce or consume messages from topics. All messages are stored as logs to persistent filesystems. Kafka is a write-ahead logging (WAL) system that writes all published messages to log files before making it available for consumer applications. Subscribers/consumers can read these written messages as required in an appropriate time-frame. Kafka was built with the following goals in mind:
+
+Kafka's architecture
+--------------------
+Every message in Kafka topics is a collection of bytes. This collection is represented as an array. Producers are the applications that store information in Kafka queues. They send messages to Kafka topics that can store all types of messages. Every topic is further differentiated into partitions. Each partition stores messages in the sequence in which they arrive. There are two major operations that producers/consumers can perform in Kafka.
+
+Producers append to the end of the write-ahead log files. Consumers fetch messages from these log files belonging to a given topic partition. Physically, each topic is spread over different Kafka brokers, which host one or two partitions of each topic.
+
+Ideally, Kafka pipelines should have a uniform number of partitions per broker and all topics on each machine. Consumers are applications or processes that subscribe to a topic or receive messages from these topics.
+
+Please see the diagram in book.
+
+A single Kafka server is called a broker. The broker receives messages from producers, assigns offsets to them, and commits the messages to storage on disk. It also services consumers, responding to fetch requests for partitions and responding with the messages that have been committed to disk.
+
+A typical Kafka cluster consists of multiple brokers. It helps in load-balancing message reads and writes to the cluster. Each of these brokers is stateless. However, they use Zookeeper to maintain their states. 
+
+Each topic partition has one of the brokers as a leader and zero or more brokers as followers. The leaders manage any read or write requests for their respective partitions. Followers replicate the leader in the background without actively interfering with the leader's working. You should think of followers as a backup for the leader and one of those followers will be chosen as the leader in the case of leader failure.
+
+Each server in a Kafka cluster will either be a leader for some of the topic's partitions or a follower for others. In this way, the load on every server is equally balanced. Kafka broker leader election is done with the help of Zookeeper.
+
+Zookeeper is an important component of a Kafka cluster. It manages and coordinates Kafka brokers and consumers. Zookeeper keeps track of any new broker additions or any existing broker failures in the Kafka cluster. Accordingly, it will notify the producer or consumers of Kafka queues about the cluster state. This helps both producers and consumers in coordinating work with active brokers. Zookeeper also records which broker is the leader for which topic partition and passes on this information to the producer or consumer to read and write the messages.
+
+Producers push data to brokers. At the time of publishing data, producers search for the elected leader (broker) of the respective topic partition and automatically send a message to that leader broker server. Similarly, the consumer reads messages from brokers.
+
+The consumer records its state with the help of Zookeeper as Kafka brokers are stateless. This design helps in scaling Kafka well. The consumer offset value is maintained by Zookeeper. The consumer records how many messages have been consumed by it using partition offset. It ultimately acknowledges that message offset to Zookeeper. It means that the consumer has consumed all prior messages.
+
+Message topics
+--------------
+Here like DB tables are the topics in Kafka, applications that are inserting data into tables are producers, and applications that are reading data are consumers.
+
+In a messaging system, messages need to be stored somewhere. In Kafka, we store messages into topics. Each topic belongs to a category, which means that you may have one topic storing item information and another may store sales information. A producer who wants to send a message may send it to its own category of topics. A consumer who wants to read these messages will simply subscribe to the category of topics that he is interested in and will consume it. Here are a few terms that we need to know:
+
+Retention Period: The messages in the topic need to be stored for a defined period of time to save space irrespective of throughput. We can configure the
+retention period, which is by default seven days, to whatever number of days we choose. Kafka keeps messages up to the defined period of time and then
+ultimately deletes them. 
+
+Space Retention Policy: We can also configure Kafka topics to clear messages when the size reaches the threshold mentioned in the configuration. However, this scenario may occur if you haven't done enough capacity planning before deploying Kafka into your organization.
+
+Offset: Each message in Kafka is assigned with a number called as an offset. Topics consist of many partitions. Each partition stores messages in the sequence in which they arrive. Consumers acknowledge messages with an offset, which means that all the messages before that message offset are received by the consumer.
+
+Partition: Each Kafka topic consists of a fixed number of partitions. During topic creation in Kafka, you need to configure the number of partitions. Partitions are
+distributed and help in achieving high throughput. 
+
+Compaction: Topic compaction was introduced in Kafka 0.8. There is no way to change previous messages in Kafka; messages only get deleted when the retention period is over. Sometimes, you may get new Kafka messages with the same key that includes a few changes, and on the consumer side, you only want to process the latest data. Compaction helps you achieve this goal by compacting all messages with the same key and creating a map offset for key: offset. It helps in removing duplicates from a large number of messages.
+
+Leader: Partitions are replicated across the Kafka cluster based on the replication factor specified. Each partition has a leader broker and followers and all the read
+write requests to the partition will go through the leader only. If the leader fails, another leader will get elected and the process will resume.
+
+Buffering: Kafka buffers messages both at the producer and consumer side to increase throughput and reduce Input/Output (IO). We will talk about it in detail
+later.
+
+Message partitions
+------------------
+Suppose that we have in our possession a purchase table and we want to read records for an item from the purchase table that belongs to a certain category, say, electronics. In the normal course of events, we will simply filter out other records, but what if we partition our table in such a way that we will be able to read the records of our choice quickly?
+
+This is exactly what happens when topics are broken into partitions known as units of parallelism in Kafka. This means that the greater the number of partitions, the more throughput. This does not mean that we should choose a huge number of partitions.
+
+While creating topics, you can always mention the number of partitions that you require for a topic. Each of the messages will be appended to partitions and each message is then assigned with a number called an offset. Kafka makes sure that messages with similar keys always go to the same partition; it calculates the hash of the message key and appends the message to the partition. Time ordering of messages is not guaranteed in topics but within a partition, it's always guaranteed. This means that messages that come later will always be appended to the end of the partition.
+
+Partitions are fault-tolerant; they are replicated across the Kafka brokers. Each partition has its leader that serves messages to the consumer that wants to read the message from the partition. If the leader fails a new leader is elected and continues to serve messages to the consumers. This helps in achieving high throughput and latency.
+
+Let's understand the pros and cons of a large number of partitions:
+
+High throughput: Partitions are a way to achieve parallelism in Kafka. Write operations on different partitions happen in parallel. All time-consuming operations will happen in parallel as well; this operation will utilize hardware resources at the maximum. On the consumer side, one partition will be assigned to one consumer within a consumer group, which means that different consumers available in different groups can read from the same partition, but different consumers from the same consumer group will not be allowed to read from the same partition.
+
+So, the degree of parallelism in a single consumer group depends on the number of partitions it is reading from. A large number of partitions results in high throughput.
+
+Choosing the number of partitions depends on how much throughput you want to achieve. We will talk about it in detail later. Throughput on the producer side also depends on many other factors such as batch size, compression type, number of replications, types of acknowledgement, and some other configurations
+
+However, we should be very careful about modifying the number of partitions--the mapping of messages to partitions completely depends on the hash code generated based on the message key that guarantees that messages with the same key will be written to the same partition. This guarantees the consumer about the delivery of messages in the order which they were stored in the partition. If we change the number of partitions, the distribution of messages will change and this order will no longer be guaranteed for consumers who were looking for the previous order subscribed.
+
+-> Increases producer memory: You must be wondering how increasing the number of partitions will force us to increase producer memory. A producer does some internal stuff before flushing data to the broker and asking them to store it in the partition. The producer buffers incoming messages per partition. Once the upper bound or the time set is reached, the producer sends his messages to the broker and removes it from the buffer.
+
+If we increase the number of partitions, the memory allocated for the buffering may exceed in a very short interval of time, and the producer will block producing messages until it sends buffered data to the broker. This may result in lower throughput. To overcome this, we need to configure more memory on the producer side, which will result in allocating extra memory to the producer.
+
+-> High availability issue: Kafka is known as high-availability, high-throughput, and distributed messaging system. Brokers in Kafka store thousands of partitions of different topics. Reading and writing to partitions happens through the leader of that partition. Generally, if the leader fails, electing a new leader takes only a few milliseconds. Observation of failure is done through controllers. Controllers are just one of the brokers. Now, the new leader will serve the request from the producer and consumer. Before serving the request, it reads metadata of the partition from Zookeeper. However, for normal and expected failure, the window is very small and takes only a few milliseconds. In the case of unexpected failure, such as killing a broker unintentionally, it may result in a delay of a few seconds based on the number of partitions.
+
+The other possibility could be that the failed broker is a controller, the controller replacement time depends on the number of partitions, the new controller reads the metadata of each partition, and the time to start the controller will increase with an increase in the number of partitions.
+
+Message producers
+In Kafka, the producer is responsible for sending data to the partition of the topic for which it is producing data.
+
+The producer generally does not write data to partitions, it creates write requests for messages and sends them to the leader broker. Partitioner calculates the hash value of the message, which helps the producer to choose which partition should be selected.
+
+The hash value is generally calculated by the message key that we provide when writing the message to a Kafka topic. The message with a null key will be distributed in a roundrobin fashion across partitions to ensure even distribution of messages.
+
+In Kafka, each partition has a leader and each read write request goes through the leader only. So a request to write messages to a partition of a topic will go through the leader broker. The producer waits for an acknowledgement of messages depending on the setting. Generally, it waits until the replication for a particular message is successfully acknowledged.
+
+Remember that until and unless all replicas have been acknowledged to commit the message, it will not be available to read. This setting is the default and ensures that a message cannot be lost if a leader broker fails.
+
+However, you can set the configuration for acknowledgement to 1, which assumes that if a message is committed by the leader, it will be available to read and the Kafka producer can produce the next messages. This setting is dangerous because, if brokers fail before other replicas commit the message, the message will be lost. This leads to less durability but high throughput.
+
+However, it's better to compromise on throughput if your consumer system does not want to lose a single message as part of the application. We will talk in detail about the producer in the next chapter.
+
+Message consumers
+-----------------
+The consumer is any one who subscribes for topics in Kafka. Each consumer belongs to a consumer group and some consumer groups contains multiple consumers. Consumers are an interesting part of Kafka and we will cover them in detail.
+
+Two consumers from the same group cannot consume message from a similar partition because it will lead to the message being consumed out of order. However, consumers from the same group can consume message from a different partition of the same topic simultaneously. Similarly, consumers from a different group can consume messages from the same
+partition in parallel without affecting the order of consumption.
+
+So, it's clear that groups play an important role; in Kafka's initial version, Zookeeper was used for group management, but in the latest version, Kafka has its own group protocol built in. One of the brokers will act as a group coordinator and will be responsible for assigning and managing partitions for groups.
+
+Remember that we talked about assigning an offset to a message in a partition; each consumer reads the offset and commits the offset to the group coordinator or Zookeeper. So if consumers fail for any reason, it will start from the next message of the committed offset.
+
+Role of Zookeeper
+-----------------
+Kafka cannot work without Zookeeper. Zookeeper records the Kafka cluster state Kafka uses Zookeeper for the following functions:
+
+-> Choosing a controller: The controller is one of the brokers, responsible for partition management with respect to leader election, topic creation, partition creation, and replica management. When a node or server shuts down, Kafka controllers elect partition leaders from followers. Kafka uses Zookeeper's metadata information to elect a controller.
+
+Brokers metadata: Zookeeper records the state of each of the brokers that are part of the Kafka cluster. It records all relevant metadata about each broker in a cluster. The producer/consumer interacts with Zookeeper to get the broker's state.
+
+Topic metadata: Zookeeper also records topic metadata such as the number of partitions, specific configuration parameters, and so on.
+
+Client quota information: With newer versions of Kafka, quota features have been introduced. Quotas enforce byte-rate thresholds on clients to read and write messages to a Kafka topic. All the information and states are maintained by
+Zookeeper
+
+Kafka topic ACLs: Kafka has an in-built authorization module that is defined as Access Control Lists (ACLs).

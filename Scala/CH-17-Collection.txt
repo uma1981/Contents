@@ -1,0 +1,357 @@
+17.1 Sequences
+---------------
+Sequences types let you work with groups of data lined up in order. Because the elements are ordered, you can ask for the first element, second element etc..
+
+Lists
+-----
+Perhaps the most important sequence type to know about is class List, the immutable linked-list. Lists support fast addition and removal of items to the beginning of the list, but they do not provide fast access to arbitrary indexes because the implementation must iterate through the list linearly.
+
+This combination of features might sound odd, but they hit a sweet spot that works well for many algorithms. The fast addition and removal of initial elements means that pattern matching works well,
+
+The immutability of lists helps you develop correct, efficient algorithms because you never need to make copies of a list. Here’s a short example showing how to initialize a list and access its head and tail:
+
+scala> val colors = List("red", "blue", "green")
+colors: List[java.lang.String] = List(red, blue, green)
+
+scala> colors.head
+res0: java.lang.String = red
+
+scala> colors.tail
+res1: List[java.lang.String] = List(blue, green)
+
+to get particular element value, Safer is to use lift method in list, so you can extract the value if it exists and fail gracefully if it does not.
+
+colors.lift(2)
+
+Arrays
+------
+Arrays allow you to hold a sequence of elements and efficiently access an element at an arbitrary position, both to get or update the element, with a zero-based index. Here’s how you create an array whose size you know, but for which you don’t yet know the element values:
+
+scala> val fiveInts = new Array[Int](5)
+fiveInts: Array[Int] = Array(0, 0, 0, 0, 0)
+
+Here’s how you initialize an array when you do know the element values:
+
+scala> val fiveToOne = Array(5, 4, 3, 2, 1)
+fiveToOne: Array[Int] = Array(5, 4, 3, 2, 1)
+
+As mentioned previously, arrays are accessed in Scala by placing an index in parentheses, not square brackets as in Java. Here’s an example of both accessing and updating an array element:
+
+scala> fiveInts(0) = fiveToOne(4)
+
+scala> fiveInts
+res3: Array[Int] = Array(1, 0, 0, 0, 0)
+
+List buffers
+------------
+Class List provides fast access to the head of the list, but not the end. When you need to build a list by appending to the end, you should consider building the list backwards by prepending elements to the front, then when you’re done, calling reverse to get the elements in the order you need.
+
+Another alternative, which avoids the reverse operation, is to use a ListBuffer. A ListBuffer is a mutable object which can help you build lists more efficiently when you need to append. ListBuffer provides constant time append and prepend operations. 
+
+You append elements with the += operator, and prepend them with the +=: operator.
+
+you can obtain a List by invoking toList on the ListBuffer.
+
+scala> import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.ListBuffer
+
+scala> val buf = new ListBuffer[Int]
+buf: scala.collection.mutable.ListBuffer[Int] = ListBuffer()
+
+scala> buf += 1
+res4: buf.type = ListBuffer(1)
+
+scala> buf += 2
+res5: buf.type = ListBuffer(1, 2)
+
+scala> buf
+res6: scala.collection.mutable.ListBuffer[Int] = ListBuffer(1, 2)
+
+scala> 3 +=: buf
+res7: buf.type = ListBuffer(3, 1, 2)
+
+scala> buf.toList
+res8: List[Int] = List(3, 1, 2)
+
+Another reason to use ListBuffer instead of List is to prevent the potential for stack overflow.
+
+Array buffers
+-------------
+An ArrayBuffer is like an array, except that you can additionally add and remove elements from the beginning and end of the sequence. All Array operations are available, though they are a little slower due to a layer of wrapping in the implementation. 
+
+The new addition and removal operations are constant time on average, but occasionally require linear time due to the implementation needing to allocate a new array to hold the buffer’s contents.
+
+To use an ArrayBuffer, you must first import it from the mutable collections package:
+
+scala> import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.ArrayBuffer
+
+When you create an ArrayBuffer, you must specify a type parameter, but need not specify a length. The ArrayBuffer will adjust the allocated space automatically as needed:
+
+scala> val buf = new ArrayBuffer[Int]()
+buf: scala.collection.mutable.ArrayBuffer[Int] = ArrayBuffer()
+
+You can append to an ArrayBuffer using the += method:
+
+scala> buf += 12
+res9: buf.type = ArrayBuffer(12)
+
+scala> buf += 15
+res10: buf.type = ArrayBuffer(12, 15)
+
+scala> buf
+res11: scala.collection.mutable.ArrayBuffer[Int] = ArrayBuffer(12, 15)
+
+All the normal array methods are available. For example, you can ask an ArrayBuffer its length, or you can retrieve an element by its index:
+
+scala> buf.length
+res12: Int = 2
+
+scala> buf(0)
+res13: Int = 12
+
+Strings (via StringOps)
+-----------------------
+One other sequence to be aware of is StringOps, which implements many sequence methods. Because Predef has an implicit conversion from String to StringOps, you can treat any string like a sequence. Here’s an example:
+
+scala> def hasUpperCase(s: String) = s.exists(_.isUpper)
+hasUpperCase: (s: String)Boolean
+
+scala> hasUpperCase("Robert Frost")
+res14: Boolean = true
+
+scala> hasUpperCase("e e cummings")
+res15: Boolean = false
+
+17.2 Sets and maps
+------------------
+As mentioned previously, the Scala collections library offers both mutable and immutable versions of sets and maps.
+
+By default when you write “Set” or “Map” you get an immutable object. If you want the mutable variant, you need to do an explicit import. 
+
+Scala gives you easier access to the immutable variants, as a gentle encouragement to prefer them over their mutable counterparts. The easy access is provided via the Predef object, which is implicitly imported into every Scala source
+
+So Map is the same as Predef.Map, which is defined to be the same as scala.collection.immutable.Map. This holds both for the Map type and Map object. If you want to use both mutable and immutable sets or maps in the same source file, one approach is to import the name of the package that contains the mutable variants:
+
+scala> import scala.collection.mutable
+import scala.collection.mutable
+
+Using sets
+----------
+
+The split method on String can separate a string into words, if you specify spaces and punctuation as word separators. The regular expression “[ !,.]+” will suffice: it indicates the string should be split at each place that one or more space and/or punctuation characters exist:
+
+scala> val text = "See Spot run. Run, Spot. Run!"
+text: java.lang.String = See Spot run. Run, Spot. Run!
+
+scala> val wordsArray = text.split("[ !,.]+")
+wordsArray: Array[java.lang.String]= Array(See, Spot, run, Run, Spot, Run)
+
+Please see the example in Intelli-J
+
+Using maps
+----------
+Maps let you associate a value with each element of the collection. Using a map looks similar to using an array, except that instead of indexing with integers counting from 0, you can use any kind of key. If you import the scala.collection.mutable package, you can create an empty mutable map like this:
+
+scala> val map = mutable.Map.empty[String, Int]
+map: scala.collection.mutable.Map[String,Int] = Map()
+
+Note that when you create a map, you must specify two types. The first type is for the keys of the map, the second for the values. In this case, the keys are strings and the values are integers.Setting entries in a map looks similar to setting entries in an array:
+
+scala> map("hello") = 1
+scala> map("there") = 2
+scala> map
+res20: scala.collection.mutable.Map[String,Int] = Map(hello -> 1, there -> 2)
+Likewise, reading a map is similar to reading an array:
+
+scala> map("hello")
+res21: Int = 1
+
+Default sets and maps
+---------------------
+The scala.collection.mutable.Set() factory method, for example, returns a scala.collection.mutable.HashSet, which uses a hash table internally. Similarly, the scala.collection.mutable.Map() factory returns a scala.collection.mutable.HashMap.
+
+The story for immutable sets and maps is a bit more involved. The class returned by the scala.collection.immutable.Set() factory method, for example, depends on how many elements you pass to it.
+
+For sets with fewer than five elements, a special class devoted exclusively to sets of each particular size is used, to maximize performance. Once you request a set that has five or more elements in it, however, the factory method will return an implementation that uses hash tries.
+
+Similarly, the scala.collection.immutable.Map() factory method will return a different class depending on how many key-value pairs you pass to it.
+
+for immutable maps with fewer than five elements, a special class devoted exclusively to maps of each particular size is used, to maximize performance. Once a map has five or more key-value pairs in it, however, an immutable HashMap is used.
+
+Sorted sets and maps
+--------------------
+On occasion you may need a set or map whose iterator returns elements in a particular order. For this purpose, the Scala collections library provides traits SortedSet and SortedMap. 
+
+These traits are implemented by classes TreeSet and TreeMap, which use a red-black tree to keep elements (in the case of TreeSet) or keys (in the case of TreeMap) in order. 
+
+These classes only come in immutable variants. Here are some TreeSet examples:
+
+scala> import scala.collection.immutable.TreeSet
+import scala.collection.immutable.TreeSet
+
+scala> val ts = TreeSet(9, 3, 1, 8, 0, 2, 7, 4, 6, 5)
+ts: scala.collection.immutable.TreeSet[Int] = TreeSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+
+scala> val cs = TreeSet('f', 'u', 'n')
+cs: scala.collection.immutable.TreeSet[Char] = TreeSet(f, n, u)
+
+And here are a few TreeMap examples:
+scala> import scala.collection.immutable.TreeMap
+import scala.collection.immutable.TreeMap
+scala> var tm = TreeMap(3 -> 'x', 1 -> 'x', 4 -> 'x')
+
+tm: scala.collection.immutable.TreeMap[Int,Char] = Map(1 -> x, 3 -> x, 4 -> x)
+scala> tm += (2 -> 'x')
+scala> tm
+res30: scala.collection.immutable.TreeMap[Int,Char] = Map(1 -> x, 2 -> x, 3 -> x, 4 -> x)
+
+17.3 Selecting mutable versus immutable collections
+---------------------------------------------------
+For some problems, mutable collections work better, and for others, immutable collections work better. When in doubt, it is better to start with an immutable collection and change it later if you need to, because immutable collections can be easier to reason about than mutable ones.
+
+immutable collections can usually be stored more compactly than mutable ones if the number of elements stored in the collection is small.For instance an empty mutable map in its default representation of HashMap takes up about 80 bytes and about 16 more are added for each entry that’s added to it. 
+
+An empty immutable Map is a single object that’s shared between all references, so referring to it essentially costs just a single pointer field. What’s more, the Scala collections library currently stores immutable maps and sets with up to four entries in a single object, which typically takes up between 16 and 40 bytes.
+
+So for small maps and sets, the immutable versions are much more compact than the mutable ones. Given that many collections are small, switching them to be immutable can give important space savings and performance advantages.
+
+To make it easier to switch from immutable to mutable collections, and vice versa, Scala provides some syntactic sugar. Even though immutable sets and maps do not support a true += method,Whenever you write a += b, and a does not support a method named +=, Scala will try interpreting it as a = a + b. For example, immutable sets do not support a += operator:
+
+scala> val people = Set("Nancy", "Jane")
+people: scala.collection.immutable.Set[java.lang.String] = Set(Nancy, Jane)
+scala> people += "Bob"
+<console>:11: error: reassignment to val
+people += "Bob"
+ˆ
+If you declare people as a var, instead of a val, however, then the collection can be “updated” with a += operation, even though it is immutable. First, a new collection will be created, and then people will be reassigned to refer to the new collection:
+
+scala> var people = Set("Nancy", "Jane")
+people: scala.collection.immutable.Set[java.lang.String] = Set(Nancy, Jane)
+scala> people += "Bob"
+scala> people
+res34: scala.collection.immutable.Set[java.lang.String] = Set(Nancy, Jane, Bob)
+
+After this series of statements, the people variable refers to a new immutable set, which contains the added string, "Bob". The same idea applies to any method ending in =, not just the += method. Here’s the same syntax used with the -= operator, which removes an element from a set, and the ++= operator, which adds a collection of elements to a set:
+
+scala> people -= "Jane"
+scala> people ++= List("Tom", "Harry")
+scala> people
+res37: scala.collection.immutable.Set[java.lang.String] = Set(Nancy, Bob, Tom, Harry)
+
+To see how this is useful, consider again the following Map example from
+Section 1.1:
+
+var capital = Map("US" -> "Washington", "France" -> "Paris")
+capital += ("Japan" -> "Tokyo")
+println(capital("France"))
+
+This code uses immutable collections. If you want to try using mutable collections instead, all that is necessary is to import the mutable version of Map, thus overriding the default import of the immutable Map:
+
+import scala.collection.mutable.Map // only change needed!
+var capital = Map("US" -> "Washington", "France" -> "Paris")
+capital += ("Japan" -> "Tokyo")
+println(capital("France"))
+
+Not all examples are quite that easy to convert, but the special treatment of methods ending in an equals sign will often reduce the amount of code that needs changing.
+
+17.4 Initializing collections
+-----------------------------
+scala> List(1, 2, 3)
+res41: List[Int] = List(1, 2, 3)
+
+scala> Set('a', 'b', 'c')
+res42: scala.collection.immutable.Set[Char] = Set(a, b, c)
+
+scala> import scala.collection.mutable
+scala> mutable.Map("hi" -> 2, "there" -> 5)
+res43: scala.collection.mutable.Map[java.lang.String,Int] = Map(hi -> 2, there -> 5)
+
+scala> Array(1.0, 2.0, 3.0)
+res44: Array[Double] = Array(1.0, 2.0, 3.0)
+
+Although most often you can let the Scala compiler infer the element type of a collection from the elements passed to its factory method, sometimes you may want to create a collection but specify a different type from the one the compiler would choose. This is especially an issue with mutable collections. Here’s an example:
+
+scala> import scala.collection.mutable
+import scala.collection.mutable
+scala> val stuff = mutable.Set(42)
+stuff: scala.collection.mutable.Set[Int] = Set(42)
+scala> stuff += "abracadabra"
+<console>:15: error: type mismatch;
+found : java.lang.String("abracadabra")
+required: Int
+stuff += "abracadabra"
+
+The problem here is that stuff was given an element type of Int. If you want it to have an element type of Any, you need to say so explicitly by putting the element type in square brackets, like this:
+
+scala> val stuff = mutable.Set[Any](42)
+stuff: scala.collection.mutable.Set[Any] = Set(42)
+
+Another special situation is if you want to initialize a collection with another collection. For example, imagine you have a list, but you want a TreeSet containing the elements in the list. Here’s the list:
+
+scala> val colors = List("blue", "yellow", "red", "green")
+colors: List[java.lang.String] = List(blue, yellow, red, green)
+
+You cannot pass the colors list to the factory method for TreeSet:
+
+scala> import scala.collection.immutable.TreeSet
+import scala.collection.immutable.TreeSet
+scala> val treeSet = TreeSet(colors)
+<console>:15: error: could not find implicit value for
+parameter ord: Ordering[List[java.lang.String]]
+val treeSet = TreeSet(colors)
+ˆ
+Instead, you’ll need to create an empty TreeSet[String] and add to it the elements of the list with the TreeSet’s ++ operator:
+
+scala> val treeSet = TreeSet[String]() ++ colors
+treeSet: scala.collection.immutable.TreeSet[String]= TreeSet(blue, green, red, yellow)
+
+Converting to array or list
+
+---------------------------
+If you need to initialize a list or array with another collection, on the other hand, it is quite straightforward. As you’ve seen previously, to initialize a new list with another collection, simply invoke toList on that collection:
+
+scala> treeSet.toList
+res50: List[String] = List(blue, green, red, yellow)
+
+Or, if you need an array, invoke toArray:
+
+scala> treeSet.toArray
+res51: Array[String] = Array(blue, green, red, yellow)
+
+the elements in the list produced by invoking toList on the TreeSet are in alphabetical order. When you invoke toList or toArray on a collection, the order of the elements in the resulting list or array will be the same as the order of elements
+produced by an iterator obtained by invoking elements on that collection.
+
+Keep in mind, however, that conversion to lists or arrays usually requires copying all of the elements of the collection, and thus may be slow for large collections.
+
+Converting between mutable and immutable sets and maps
+------------------------------------------------------
+Here’s how you’d convert the immutable TreeSet from the previous example to a mutable set, and back again to an immutable one:
+scala> import scala.collection.mutable
+import scala.collection.mutable
+scala> treeSet
+res52: scala.collection.immutable.TreeSet[String] =TreeSet(blue, green, red, yellow)
+
+scala> val mutaSet = mutable.Set.empty ++= treeSet
+mutaSet: scala.collection.mutable.Set[String] =Set(yellow, blue, red, green)
+
+scala> val immutaSet = Set.empty ++ mutaSet
+immutaSet: scala.collection.immutable.Set[String] = Set(yellow, blue, red, green)
+
+You can use the same technique to convert between mutable and immutable maps:
+
+scala> val muta = mutable.Map("i" -> 1, "ii" -> 2)
+muta: scala.collection.mutable.Map[java.lang.String,Int] = Map(ii -> 2, i -> 1)
+
+scala> val immu = Map.empty ++ muta
+immu: scala.collection.immutable.Map[java.lang.String,Int] = Map(ii -> 2, i -> 1)
+
+Tuples
+------
+A tuple combines a fixed number of items together so that they can be passed around as a whole. Unlike an array or list, a tuple can hold objects with different types. Here is an example of a tuple holding an integer, a string, and the console:
+
+(1, "hello", Console)
+
+Tuples can combine objects of different types, tuples do not inherit from Traversable. If you find yourself wanting to group exactly one integer and exactly one string, then you want a tuple, not a List or Array.
+
+Please see the example in Intelli-J

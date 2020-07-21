@@ -1,0 +1,122 @@
+Chapter - 11, For this chapter, no examples are written in Intelli-J
+----------------------------------------------------------------------
+
+Scala’s Hierarchy
+-----------------
+
+In Scala, every class inherits from a common superclass named Any. Because every class is a subclass of Any, the methods defined in Any are “universal” methods: they may be invoked on any object.
+
+Scala also defines some interesting classes at the bottom of the hierarchy, Null and Nothing, which essentially act as common subclasses. 
+
+For example, just as Any is a superclass of every other class, Nothing is a subclass of every other class. 
+
+11.1 Scala’s class hierarchy
+----------------------------
+The root class Any has two subclasses: AnyVal and AnyRef. AnyVal is the parent class of every built-in value class in Scala. There are nine such value classes: Byte, Short, Char, Int, Long, Float, Double, Boolean, and Unit. The first eight of these correspond to Java’s primitive types, and their values are represented at run time as Java’s primitive values.
+
+The instances of these classes are all written as literals in Scala. For example, 42 is an instance of Int, 'x' is an instance of Char, and false an instance of Boolean. You cannot create instances of these classes using new. This is enforced by the “trick” that value classes are all defined to be both abstract and final.
+
+scala> new Int
+
+you would get:
+<console>:5: error: class Int is abstract; cannot be
+instantiated
+new Int
+
+The other value class, Unit, corresponds roughly to Java’s void type; it is used as the result type of a method that does not otherwise return an interesting result.
+
+The other subclass of the root class Any is class AnyRef. This is the base class of all reference classes in Scala.
+
+classes written in Java as well as classes written in Scala all inherit from AnyRef. One way to think of java.lang.Object, therefore, is as the way AnyRef is implemented on the Java platform. Thus, although you can use Object and AnyRef interchangeably in Scala programs on the Java platform,the recommended style is to use AnyRef everywhere. Scala classes are different from Java classes in that they also inherit from a special marker trait called ScalaObject.
+
+11.2 How primitives are implemented
+-----------------------------------
+Scala stores integers in the same way as Java: as 32-bit words.This is important for efficiency on the JVM and also for interoperability with Java libraries.
+
+Scala uses the “backup” class java.lang.Integer whenever an integer needs to be seen as a (Java) object.Integers of type Int are converted transparently to “boxed integers” of type java.lang.Integer whenever necessary.
+
+// This is Java
+boolean isEqual(int x, int y) {
+return x == y;
+}
+System.out.println(isEqual(421, 421));
+
+You will surely get true.
+
+Now, change the argument types of isEqual to java.lang.Integer (or Object, the result will be the same):
+
+// This is Java
+boolean isEqual(Integer x, Integer y) {
+return x == y;
+}
+System.out.println(isEqual(421, 421));
+
+You will find that you get false! What happens is that the number 421 gets boxed twice, so that the arguments for x and y are two different objects. Because == means reference equality on reference types, and Integer is a reference type, the result is false.
+
+Now try the same experiment in Scala:
+scala> def isEqual(x: Int, y: Int) = x == y
+isEqual: (Int,Int)Boolean
+
+scala> isEqual(421, 421)
+res10: Boolean = true
+
+scala> def isEqual(x: Any, y: Any) = x == y
+isEqual: (Any,Any)Boolean
+
+scala> isEqual(421, 421)
+res11: Boolean = true
+
+This is one aspect where it shows that Java is not a pure object-oriented language. There is a difference between primitive types and reference types that can be clearly observed.
+
+In Scala, string comparison works as it should:
+scala> val x = "abcd".substring(2)
+x: java.lang.String = cd
+scala> val y = "abcd".substring(2)
+y: java.lang.String = cd
+scala> x == y
+res12: Boolean = true
+
+In Java, the result of comparing x with y would be false. The programmer should have used equals in this case, but it is easy to forget.
+
+In some cases compare their instances with reference equality. For these cases, class AnyRef defines an additional eq method, which cannot be overridden and is implemented as reference equality (i.e., it behaves like == in Java for reference types). There’s also the negation of eq, which is called ne. For example:
+
+scala> val x = new String("abc")
+x: java.lang.String = abc
+
+scala> val y = new String("abc")
+y: java.lang.String = abc
+scala> x == y
+res13: Boolean = true
+
+scala> x eq y
+res14: Boolean = false
+
+scala> x ne y
+res15: Boolean = true
+
+11.3 Bottom types
+-----------------
+At the bottom of the type hierarchy you see the two classes scala.Null and scala.Nothing. These are special types that handle some “corner cases” of Scala’s object-oriented type system in a uniform way.
+
+Class Null is the type of the null reference; it is a subclass of every reference class (i.e., every class that itself inherits from AnyRef). Null is not compatible with value types. You cannot, for example, assign a null value
+to an integer variable:
+
+scala> val i: Int = null
+<console>:4: error: type mismatch;
+found : Null(null)
+required: Int
+
+Type Nothing is at the very bottom of Scala’s class hierarchy.one use of Nothing is that it signals abnormal termination. For instance there’s the error method in the Predef object of Scala’s standard library, which is defined like this:
+
+def error(message: String): Nothing =
+throw new RuntimeException(message)
+
+The return type of error is Nothing, which tells users that the method will not return normally (it throws an exception instead). Because Nothing is a subtype of every other type, you can use methods like error in very flexible ways. 
+
+For instance:
+
+def divide(x: Int, y: Int): Int =
+if (y != 0) x / y
+else error("can't divide by zero")
+
+The “then” branch of the conditional, x / y, has type Int, whereas the else branch, the call to error, has type Nothing. Because Nothing is a subtype of Int, the type of the whole conditional is Int, as required.

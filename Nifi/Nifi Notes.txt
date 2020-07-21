@@ -1,0 +1,37 @@
+Process Group - Like folder
+Processor - Getfile,Putfile,GetKaffka,PutKaffka
+
+Inside process group -> pull processor like getfile.
+
+Nifi is continuous process
+
+2 types of process in data flow/transporation -> on-demand and continuous process
+
+On demand - Sqoop, when ever we need we just start the tool and close it.
+
+Continuous - Nifi, This tool will keep on running.
+
+Properties of processor in Settings Tab - video 2
+---------------------------------------
+Yield Duration -> Based on the configured seconds, Nifi will go and check the directory whether file is available.i.e.How many seconds once nifi have to check the directory
+
+Penalty Duration -> When the file is not present in the directory then Nifi will no check for the configured seconds specified in this property.
+
+Bulletin Level -> Setting Log level like error/warning/info/debug
+
+Auto terminate relation ship/Success -> Whether you are going to hold this success or propagate this to next level.
+
+Properties of processor in properties Tab - video 2
+-----------------------------------------
+Input Directory (path in the linux file system) -> /home/hduser/src
+
+File Filter -> Types of files and extension of the files we can give.
+
+Batch Size,Keep Source File, Recursive sub directories.
+
+Path filter -> Given the subdirectory path, so pull data from those subdirectories only.
+
+Supports Expression Language-true-> Instead of hard coding the value, we can pass the arguments.
+
+Polling Data -> Waiting time can be confifured here for getting the data.
+

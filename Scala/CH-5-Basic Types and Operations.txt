@@ -1,0 +1,306 @@
+Basic Types and Operations
+--------------------------
+
+Java’s basic types and operators have the same meaning in Scala.
+
+Some basic types
+----------------
+Collectively, types Byte,Short, Int, Long, and Char are called integral types. 
+
+The integral types plus Float and Double are called numeric types.
+
+Please see the table 5.1 for more details.
+
+Savvy Java developers will note that Scala’s basic types have the exact same ranges as the corresponding types in Java.
+
+5.2 Literals
+------------
+A literal is a way to write a constant value directly in code.
+
+Integer literals
+----------------
+Integer literals for the types Int, Long, Short, and Byte come in three forms: decimal, hexadecimal, and octal. The way an integer literal begins indicates the base of the number. If the number begins with a 0x or 0X, it is hexadecimal (base 16), and may contain 0 through 9 as well as upper or lowercase digits A through F. Some examples are:
+
+scala> val hex = 0x5
+hex: Int = 5
+scala> val hex2 = 0x00FF
+hex2: Int = 255
+scala> val magic = 0xcafebabe
+magic: Int = 889275714
+
+Note that the Scala shell always prints integer values in base 10, no matter what literal form you may have used to initialize it.
+
+If the number begins with a zero, it is octal (base 8), and may, therefore, only contain digits 0 through 7. 
+
+Some examples are:
+
+scala> val oct = 035 // (35 octal is 29 decimal)
+oct: Int = 29
+scala> val nov = 0777
+nov: Int = 511
+scala> val dec = 0321
+dec: Int = 209
+
+If the number begins with a non-zero digit, and is otherwise undecorated,it is decimal (base 10). For example:
+
+scala> val dec1 = 31
+dec1: Int = 31
+scala> val dec2 = 255
+dec2: Int = 255
+scala> val dec3 = 20
+dec3: Int = 20
+
+If an integer literal ends in an L or l, it is a Long, otherwise it is an Int. Some examples of Long integer literals are:
+
+scala> val prog = 0XCAFEBABEL
+prog: Long = 3405691582
+scala> val tower = 35L
+tower: Long = 35
+scala> val of = 31l
+of: Long = 31
+
+If an Int literal is assigned to a variable of type Short or Byte, the literal is treated as if it were a Short or Byte type so long as the literal value is within the valid range for that type. For example:
+
+scala> val little: Short = 367
+little: Short = 367
+scala> val littler: Byte = 38
+littler: Byte = 38
+
+Floating point literals
+-----------------------
+Floating point literals are made up of decimal digits, optionally containing a decimal point, and optionally followed by an E or e and an exponent. Some examples of floating-point literals are:
+
+scala> val big = 1.2345
+big: Double = 1.2345
+
+scala> val bigger = 1.2345e1
+bigger: Double = 12.345
+scala> val biggerStill = 123E45
+biggerStill: Double = 1.23E47
+
+If a floating-point literal ends in an F or f, it is a Float, otherwise it is a Double. Optionally, a Double floating-point literal can end in D or d. Some examples of Float literals are:
+
+scala> val little = 1.2345F
+little: Float = 1.2345
+scala> val littleBigger = 3e5f
+littleBigger: Float = 300000.0
+
+That last value expressed as a Double could take these (and other) forms:
+
+scala> val anotherDouble = 3e5
+anotherDouble: Double = 300000.0
+scala> val yetAnother = 3e5D
+yetAnother: Double = 300000.0
+
+Character literals
+------------------
+Character literals are composed of any Unicode character between single quotes, such as:
+scala> val a = 'A'
+a: Char = A
+
+In addition to providing an explicit character between the single quotes, you can provide an octal or hex number for the character code point preceded by a backslash. The octal number must be between '\0' and '\377'. For example, the Unicode character code point for the letter A is 101 octal. Thus:
+
+scala> val c = '\101'
+c: Char = A
+
+A character literal can also be given as a general Unicode character consisting of four hex digits and preceded by a \u, as in:
+
+scala> val d = '\u0041'
+d: Char = A
+scala> val f = '\u0044'
+f: Char = D
+
+String literals
+---------------
+A string literal is composed of characters surrounded by double quotes:
+
+scala> val hello = "hello"
+hello: java.lang.String = hello
+
+The syntax of the characters within the quotes is the same as with character literals. For example:
+scala> val escapes = "\\\"\'"
+escapes: java.lang.String = \"'
+
+Because this syntax is awkward for strings that contain a lot of escape sequences or strings that span multiple lines
+
+Scala includes a special syntax for raw strings. You start and end a raw string with three double quotation marks in a row ("""). The interior of a raw string may contain any characters whatsoever, including newlines, quotation marks, and special characters
+
+println("""Welcome to Ultamix 3000.
+Type "HELP" for help.""")
+
+Running this code does not produce quite what is desired, however:
+
+Welcome to Ultamix 3000.
+	Type "HELP" for help.
+
+The issue is that the leading spaces before the second line are included in the string! To help with this common situation, you can call stripMargin on strings. To use this method, put a pipe character (|) at the front of each line, and then call stripMargin on the whole string:
+
+println("""|Welcome to Ultamix 3000.
+|Type "HELP" for help.""".stripMargin)
+
+Now the code behaves as desired:
+
+Welcome to Ultamix 3000.
+Type "HELP" for help.
+
+Symbol Iiterals
+---------------
+Have to read this info in NET
+
+
+Boolean literals
+-----------------
+The Boolean type has two literals, true and false:
+scala> val bool = true
+bool: Boolean = true
+scala> val fool = false
+fool: Boolean = false
+
+5.3 Operators are methods
+-------------------------
+Scala provides a rich set of operators for its basic types.For example, 1 + 2 really means the same thing as (1).+(2).In other words, class Int contains a method named + that takes an Int and returns an Int result. This + method is invoked when you add two Ints:
+
+scala> val sum = 1 + 2 // Scala invokes (1).+(2)
+sum: Int = 3
+
+To prove this to yourself, you can write the expression explicitly as a method invocation:
+
+scala> val sumMore = (1).+(2)
+sumMore: Int = 3
+
+In fact, Int contains several overloaded + methods that take different parameter types. For example, Int has another method, also named +, that takes and returns a Long
+
+scala> val longSum = 1 + 2L // Scala invokes (1).+(2L)
+longSum: Long = 3
+
+Postfix operators are methods that take no arguments, when they are invoked without a dot or parentheses. In Scala, you can leave off empty parentheses on method calls. The convention is that you include parentheses if the method has side effects, such as println(), but you can leave them off if the method has no side effects, such as toLowerCase invoked on a String:
+
+scala> val s = "Hello, world!"
+s: java.lang.String = Hello, world!
+
+scala> s.toLowerCase
+res4: java.lang.String = hello, world!
+
+5.4 Arithmetic operations
+-------------------------
+You can invoke arithmetic methods via infix operator notation for addition(+), subtraction (),multiplication (*), division (/), and remainder (%), on any numeric type. Here are some examples:
+scala> 1.2 + 2.3
+res6: Double = 3.5
+
+scala> 3-1
+res7: Int = 2
+
+scala> 'b' - 'a'
+res8: Int = 1
+
+scala> 2L * 3L
+res9: Long = 6
+
+scala> 11 / 4
+res10: Int = 2
+
+scala> 11 % 4
+res11: Int = 3
+
+scala> 11.0f / 4.0f
+res12: Float = 2.75
+
+scala> 11.0 % 4.0
+res13: Double = 3.0
+
+The numeric types also offer unary prefix operators + (method unary_+) and (method unary_), which allow you to indicate a literal number is positive or negative, as in 3 or +4.0.
+
+5.5 Relational and logical operations
+-------------------------------------
+You can compare numeric types with relational methods greater than (>), less than (<), greater than or equal to (>=), and less than or equal to (<=), which yield a Boolean result. In addition, you can use the unary ‘!’ operator (the unary_! method) to invert a Boolean value. Here are a few examples:
+
+scala> 1 > 2
+res16: Boolean = false
+
+scala> 1 < 2
+res17: Boolean = true
+
+scala> 1.0 <= 1.0
+res18: Boolean = true
+
+scala> 3.5f >= 3.6f
+res19: Boolean = false
+
+scala> 'a' >= 'A'
+res20: Boolean = true
+
+scala> val thisIsBoring = !true
+thisIsBoring: Boolean = false
+
+scala> !thisIsBoring
+res21: Boolean = true
+
+The logical methods, logical-and (&&) and logical-or (||), take Boolean operands in infix notation and yield a Boolean result. For example:
+
+scala> val toBe = true
+toBe: Boolean = true
+
+scala> val question = toBe || !toBe
+question: Boolean = true
+
+scala> val paradox = toBe && !toBe
+paradox: Boolean = false
+
+Please see the below example, In the first expression, pepper and salt are invoked, but in the second, only salt is invoked. Given salt returns false, there’s no need to call pepper.
+
+5.6 Bitwise operations
+----------------------
+Please see it in PDF.
+
+5.7 Object equality
+-------------------
+If you want to compare two objects for equality, you can use either ==, or its inverse !=. Here are a few simple examples:
+
+scala> 1 == 2
+res31: Boolean = false
+
+scala> 1 != 2
+res32: Boolean = true
+
+scala> 2 == 2
+res33: Boolean = true
+
+These operations actually apply to all objects, not just basic types. For example, you can use == to compare lists:
+
+scala> List(1, 2, 3) == List(1, 2, 3)
+res34: Boolean = true
+
+scala> List(1, 2, 3) == List(4, 5, 6)
+res35: Boolean = false
+
+Going further, you can compare two objects that have different types:
+
+scala> 1 == 1.0
+res36: Boolean = true
+
+scala> List(1, 2, 3) == "hello"
+res37: Boolean = false
+
+You can even compare against null, or against things that might be null. No exception will be thrown:
+
+scala> List(1, 2, 3) == null
+res38: Boolean = false
+
+scala> null == List(1, 2, 3)
+res39: Boolean = false
+
+As you see, == has been carefully crafted so that you get just the equality comparison you want in most cases. This is accomplished with a very simple rule: first check the left side for null, and if it is not null, call the equals
+method. Since equals is a method, the precise comparison you get depends on the type of the left-hand argument. Since there is an automatic null check, you do not have to do the check yourself.
+
+For example, here is a comparison between two strings that happen to have the same five letters in them:
+
+scala> ("he"+"llo") == "hello"
+res40: Boolean = true
+
+5.8 Operator precedence and associativity
+-----------------------------------------
+Please see the PDF
+
+5.9 Rich wrappers
+------------------
+Please see the PDF

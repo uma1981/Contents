@@ -1,0 +1,5 @@
+Chapter 24
+The Scala Collections API
+-------------------------
+
+Please read this chapter for in-depth knowledge on scala collections

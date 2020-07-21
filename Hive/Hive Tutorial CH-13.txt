@@ -1,0 +1,139 @@
+CHAPTER 13
+Functions
+-----------
+Discovering and Describing Functions
+------------------------------------
+Before writing custom UDFs, let’s familiarize ourselves with the ones that are already part of Hive
+
+The SHOW FUNCTIONS command lists the functions currently loaded in the Hive session, both built-in and any user-defined functions that have been loaded using the techniques we will discuss shortly:
+
+hive> SHOW FUNCTIONS;
+abs
+acos
+and
+array
+array_contains
+...			
+Functions usually have their own documentation. Use DESCRIBE FUNCTION to display a short description:
+
+hive> DESCRIBE FUNCTION concat;
+concat(str1, str2, ... strN) - returns the concatenation of str1, str2, ... strN
+
+Functions may also contain extended documentation that can be accessed by adding the EXTENDED keyword:
+
+hive> DESCRIBE FUNCTION EXTENDED concat;
+concat(str1, str2, ... strN) - returns the concatenation of str1, str2, ... strN
+Returns NULL if any argument is NULL.
+Example:
+> SELECT concat('abc', 'def') FROM src LIMIT 1;
+'abcdef'
+
+Calling Functions
+-----------------
+To use a function, simply call it by name in a query, passing in any required arguments. Some functions take a specific number of arguments and argument types, while other functions accept a variable number of arguments with variable types. Just like keywords, the case of function names is ignored:
+
+SELECT concat(column1,column2) AS x FROM table;
+
+Standard Functions
+------------------
+The term user-defined function (UDF) is also used in a narrower sense to refer to any function that takes a row argument or one or more columns from a row and returns a single value. Most functions fall into this category. 
+
+Examples include many of the mathematical functions, like round() and floor(), for converting DOUBLES to BIGINTS, and abs(), for taking the absolute value of a number.
+
+Aggregate Functions
+-------------------
+Another type of function is an aggregate function. All aggregate functions, user-defined and built-in, are referred to generically as user-defined aggregate functions (UDAFs).
+
+An aggregate function takes one or more columns from zero to many rows and returns a single result. Examples include the math functions: sum(), which returns a sum of all inputs; avg(), which computes the average of the values; min() and max(), which return the lowest and highest values, respectively:
+
+hive> SELECT avg(price_close)
+> FROM stocks
+> WHERE exchange = 'NASDAQ' AND symbol = 'AAPL';
+
+Aggregate methods are often combined with GROUP BY clauses.
+
+hive> SELECT year(ymd), avg(price_close) FROM stocks
+> WHERE exchange = 'NASDAQ' AND symbol = 'AAPL'
+> GROUP BY year(ymd);
+1984 25.578625440597534
+1985 20.193676221040867
+1986 32.46102808021274
+
+Table Generating Functions
+--------------------------
+A third type of function supported by Hive is a table generating function.are often referred to generically as user-defined table generating functions (UDTFs).
+
+Table generating functions take zero or more inputs and produce multiple columns or rows of output. The array function takes a list of arguments and returns the list as a single array type. Suppose we start with this query using an array:
+
+hive> SELECT array(1,2,3) FROM dual;
+[1,2,3]
+
+The explode() function is a UDTF that takes an array of input and iterates through the list, returning each element from the list in a separate row.
+
+hive> SELECT explode(array(1,2,3)) AS element FROM src;
+1
+2
+3
+
+However, Hive only allows table generating functions to be used in limited ways. For example, we can’t project out any other columns from the table, a significant limitation.
+
+Here is a query we would like to write with the employees table we have used before. We want to list each manager-subordinate pair.
+
+Example 13-1. Invalid use of explode
+hive> SELECT name, explode(subordinates) FROM employees;
+
+FAILED: Error in semantic analysis: UDTF's are not supported outside
+the SELECT clause, nor nested in expressions
+
+However, Hive offers a LATERAL VIEW feature to allow this kind of query:
+
+hive> SELECT name, sub
+> FROM employees
+> LATERAL VIEW explode(subordinates) subView AS sub;
+John Doe Mary Smith
+John Doe Todd Jones
+Mary Smith Bill King
+
+Note that there are no output rows for employees who aren’t managers (i.e., who have no subordinates), namely Bill King and Todd Jones. Hence, explode outputs zero to
+many new records.
+
+The LATERAL VIEW wraps the output of the explode call. A view alias and column alias are required, subView and sub, respectively, in this case.
+
+A UDF for Finding a Zodiac Sign from a Day
+------------------------------------------
+This section tells about how to create function in Java and use it in Hive. not able to undestand, if you need you can read in pdf.
+
+UDF Versus GenericUDF
+----------------------
+In our Zodiac example we extended the UDF class. Hive offers a counterpart called GenericUDF. GenericUDF is a more complex abstraction, but it offers support for better null handling and makes it possible to handle some types of operations programmatically that a standard UDF cannot support. An example of a generic UDF is the Hive CASE ... WHEN statement, which has complex logic depending on the arguments to the statement. We will demonstrate how to use the GenericUDF class to write a user-defined function, called nvl(), which returns a default value if null is passed in.
+
+This section also tells about how to create function in Java and use it in Hive. not able to undestand, if you need you can read in pdf.
+
+Permanent Functions
+-------------------
+Until this point we have bundled our code into JAR files, then used ADD JAR and CREATE TEMPORARY FUNCTION to make use of them.
+
+Your function may also be added permanently to Hive, however this requires a small modification to a Hive Java file and then rebuilding Hive.
+
+Here is an example change to FunctionRegistry where the new nvl() function is added to Hive’s list of built-in functions:
+...
+registerUDF("parse_url", UDFParseUrl.class, false);
+registerGenericUDF("nvl", GenericUDFNvl.class);
+registerGenericUDF("split", GenericUDFSplit.class);
+
+User-Defined Aggregate Functions
+---------------------------------
+This section tells about how to create function UDAF in Java and use it in Hive. not able to undestand, Big theory if you need you can read in pdf.
+
+User-Defined Table Generating Functions
+---------------------------------------
+This section tells about how to create function UDTF in Java and use it in Hive. not able to undestand, Big theory if you need you can read in pdf.
+
+Macros
+--------
+Macros provide the ability to define functions in HiveQL that call other functions and operators. When appropriate for the particular situation, macros are a convenient alternative to writing UDFs in Java or using Hive streaming, because they require no external code or scripts.
+
+To define a macro, use the CREATE TEMPORARY MACRO syntax. Here is an example that
+creates a SIGMOID function calculator:
+hive> CREATE TEMPORARY MACRO SIGMOID (x DOUBLE) 1.0 / (1.0 + EXP(-x));
+hive> SELECT SIGMOID(2) FROM src LIMIT 1;

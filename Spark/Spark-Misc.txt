@@ -1,0 +1,324 @@
+######################################################################################################### 
+
+create a log4j.properties file in the conf subfolder,
+like this:
+$ nano /usr/local/spark/conf/log4j.properties
+
+# set global logging severity to INFO (and upwards: WARN, ERROR, FATAL)
+log4j.rootCategory=INFO, console, file
+# console config (restrict only to ERROR and FATAL)
+log4j.appender.console=org.apache.log4j.ConsoleAppender
+log4j.appender.console.target=System.err
+log4j.appender.console.threshold=ERROR
+log4j.appender.console.layout=org.apache.log4j.PatternLayout
+log4j.appender.console.layout.ConversionPattern=%d{yy/MM/dd HH:mm:ss}
+➥ %p %c{1}: %m%n
+# file config
+log4j.appender.file=org.apache.log4j.RollingFileAppender
+log4j.appender.file.File=logs/info.log
+log4j.appender.file.MaxFileSize=5MB
+log4j.appender.file.MaxBackupIndex=10
+log4j.appender.file.layout=org.apache.log4j.PatternLayout
+log4j.appender.file.layout.ConversionPattern=%d{yy/MM/dd HH:mm:ss}
+➥ %p %c{1}: %m%n
+# Settings to quiet third party logs that are too verbose
+log4j.logger.org.eclipse.jetty=WARN
+log4j.logger.org.eclipse.jetty.util.component.AbstractLifeCycle=ERROR
+log4j.logger.org.apache.spark.repl.SparkIMain$exprTyper=INFO
+log4j.logger.org.apache.spark.repl.SparkILoop$SparkILoopInterpreter=INFO
+log4j.logger.org.apache.spark=WARN
+log4j.logger.org.apache.hadoop=WARN
+
+######################################################################################################### 
+
+The good thing about broadcast variables is that they’re simple to use.
+
+val bcEmployees = sc.broadcast(employees)
+
+val isEmp = user => bcEmployees.value.contains(user)
+val isEmployee = spark.udf.register("SetContainsUdf", isEmp)
+	
+
+broadcast variables are accessed using their value method
+
+######################################################################################################### 
+
+Here’s a complete list of transformations that cause a shuffle after map or flatMap transformations:
+
+■ Pair RDD transformations that can change the RDD’s partitioner: aggregate-ByKey, foldByKey, reduceByKey, groupByKey, join, leftOuterJoin, right-OuterJoin, fullOuterJoin, and subtractByKey
+■ RDD transformations: subtract, intersection, and groupWith
+■ sortByKey transformation (which always causes a shuffle)
+■ partitionBy or coalesce with shuffle=true (covered in the next section)
+
+######################################################################################################### 
+
+PARAMETERS THAT AFFECT SHUFFLING
+
+Spark has two shuffle implementations: sort-based and hash-based. Sort-based shuffling has been the default since version 1.2 because it’s more memory efficient and creates fewer files.3 You can define which shuffle implementation to use by setting the value of the spark.shuffle.manager parameter to either hash or sort.
+
+The spark.shuffle.consolidateFiles parameter specifies whether to consolidate intermediate files created during a shuffle. For performance reasons, we recommend
+that you change this to true (the default value is false) if you’re using an ext4 or XFS filesystem.4
+
+Shuffling can require a lot of memory for aggregation and co-grouping. The spark.shuffle.spill parameter specifies whether the amount of memory used for these tasks should be limited
+
+Some useful additional parameters are as follows:
+■ spark.shuffle.compress specifies whether to compress intermediate files (the default is true).
+■ spark.shuffle.spill.batchSize specifies the number of objects that will be serialized or deserialized together when spilling to disk. The default is 10,000.
+■ spark.shuffle.service.port specifies the port the server will listen on if an external shuffle service is enabled.
+
+######################################################################################################### 
+
+Saving the RDD lineage with checkpointing
+
+Because the RDD lineage can grow arbitrarily long, by chaining any number of transformations, Spark provides a way to persist the entire RDD to stable storage. Then, in case of node failure, Spark doesn’t need to recompute the missing RDD pieces from the start. It uses a snapshot and computes the rest of the lineage from there. This feature is called checkpointing.
+
+During checkpointing, the entire RDD is persisted to disk—not just its data, as is the case with caching, but its lineage, too. After checkpointing, the RDD’s dependencies are erased, as well as the information about its parent(s), because they won’t be needed for its recomputation any more.
+
+You can checkpoint an RDD by calling the checkpoint operation, but first you have to set the directory where the data will be saved by calling SparkContext.setCheckpointDir(). This directory is usually an HDFS directory, but it can also be a local one.checkpoint must be called before any jobs are executed on the RDD, and the RDD has to be materialized afterward (some action has to be called on it) for the checkpointing to be done.
+
+So, when should you checkpoint an RDD? If you have an RDD with a long DAG (the RDD has lots of dependencies), rebuilding it could take a long time in case of a failure. If the RDD is checkpointed, reading it from a file could be much quicker than rebuilding it by using all the (possibly complicated) transformations. Checkpointing is also important in Spark Streaming, as you’ll soon see.
+
+######################################################################################################### 
+
+Sending data to executors using broadcast variables
+
+As we said in chapter 3, broadcast variables can be shared and accessed from across the cluster, similar to accumulators. But they’re opposite from accumulators in that they can’t be modified by executors. The driver creates a broadcast variable, and executors read it.
+
+You should use broadcast variables if you have a large set of data that the majority of your executors need. Typically, variables created in the driver, needed by tasks for their execution, are serialized and shipped along with those tasks. But a single driver program can reuse the same variable in several jobs, and several tasks may get shipped to the same executor as part of the same job. So, a potentially large variable may get serialized and transferred over the
+network more times than necessary. In these cases, it’s better to use broadcast variables, because they can transfer the data in a more optimized way and only once.
+
+######################################################################################################### 
+
+Spark SQL also lets you register DataFrames as tables in the table catalog, which doesn’t hold the data itself; it merely saves information about how to access the structured data.
+
+A permanent table catalog (surviving Spark context restarts) is available only when Spark is built with Hive support.When built with Hive support, Spark includes all of Hive’s dependencies. Hive is included by default when you download archives from the Spark downloads page. In addition to bringing a more powerful SQL parser, Hive support enables you to access existing Hive tables and use existing, community-built Hive UDFs. For these reasons, we recommend using Spark built with Hive support.
+
+######################################################################################################### 
+
+import java.sql.Timestamp
+case class Post(
+commentCount:Option[Int],
+lastActivityDate:Option[java.sql.Timestamp],
+ownerUserId:Option[Long],
+body:String,
+score:Option[Int],
+creationDate:Option[java.sql.Timestamp],
+viewCount:Option[Int],
+title:String,
+tags:String,
+answerCount:Option[Int],
+acceptedAnswerId:Option[Long],
+postTypeId:Option[Long],
+id:Long)
+Nullable fields are declared to be of type Option[T], which means they can contain either a Some object with the value of type T, or a None (null in Java). For timestamp columns, Spark supports the java.sql.Timestamp class.
+
+######################################################################################################### 
+
+An important note about performance
+
+One hidden but important parameter is spark.sql.shuffle.partitions, which determines the number of partitions a DataFrame should have after a shuffle is performed
+(for example, after a join). As of Spark 1.5.1, the default is 200, which could be too much or too little for your use case and your environment. For the examples in this book, you don’t need more than 5 to 10 partitions. But if your dataset is huge, 200 may be too small. If you wish to change the number of partitions, you can set this parameter before performing the action that will trigger the shuffle.
+
+This isn’t an ideal situation, however, because the number of DataFrame partitions shouldn’t be fixed, but should depend on the data and runtime environment instead.
+
+######################################################################################################### 
+
+Table catalog and Hive metastore
+
+When executing SQL queries using Spark SQL, you can reference a DataFrame by its name by registering the DataFrame as a table. When you do that, Spark stores the table definition in the table catalog.
+
+For Spark without Hive support, a table catalog is implemented as a simple inmemory map, which means that table information lives in the driver’s memory and
+disappears with the Spark session. SparkSession with Hive support, on the other hand, uses a Hive metastore for implementing the table catalog. A Hive metastore is a
+persistent database, so DataFrame definitions remain available even if you close the Spark session and start a new one.
+
+REGISTERING TABLES TEMPORARILY
+Hive support still enables you to create temporary table definitions. In both cases (Spark with or without Hive support), the createOrReplaceTempView method registers
+a temporary table. You can register the postsDf DataFrames like this:
+postsDf.createOrReplaceTempView("posts_temp")
+Now you’ll be able to query data from postsDf DataFrame using SQL queries referencing the DataFrame by the name posts_temp. We’ll show you how to do that in a jiffy.
+
+As we said, only SparkSession with Hive support can be used to register table definitions that will survive your application’s restarts (in other words, they’re persistent). By default, HiveContext creates a Derby database in the local working directory under the metastore_db subdirectory (or it reuses the database if it already exists). If you wish to change where the working directory is located, set the hive.metastore.warehouse.dir property in your hive-site.xml file (details shortly).
+
+postsDf.write.saveAsTable("posts")
+
+After you save DataFrames to a Hive metastore like this, you can subsequently use them in SQL expressions.
+
+WORKING WITH THE SPARK TABLE CATALOG
+Since version 2.0, Spark provides a facility for managing the table catalog. It is implemented as the Catalog class, accessible through SparkSession’s catalog field. You can use it to see which tables are currently registered:
+scala> spark.catalog.listTables().show()
++----------+--------+-----------+---------+-----------+
+| name|database|description|tableType|isTemporary|
++----------+--------+-----------+---------+-----------+
+| posts| default| null| MANAGED| false|
+| votes| default| null| MANAGED| false|
+|posts_temp| null| null|TEMPORARY| true|
++----------+--------+-----------+---------+-----------+
+You can use the show() method here because listTables returns a DataSet of Table objects. You can immediately see which tables are permanent and which are temporary (isTemporary column). The MANAGED table type means that Spark also manages the data for the table. The table can also be EXTERNAL, which means that its data is managed by another system, for example a RDBMS.
+
+Tables are registered in metastore “databases.” The default database, called “default,” stores managed tables in the spark_warehouse subfolder in your home
+directory. You can change that location by setting the spark.sql.warehouse.dir parameter to the desired value.
+
+CONFIGURING A REMOTE HIVE METASTORE
+You can also configure Spark to use a remote Hive metastore database. This can be a metastore database of an existing Hive installation or a new database to be used exclusively by Spark. This configuration is done by placing the Hive configuration file hivesite.xml
+
+######################################################################################################## 
+
+Catalyst optimizer
+The Catalyst optimizer is the brain behind DataFrames and DataSets, and is responsible for converting DataFrame DSL and SQL expressions into low-level RDD operations.
+It can be easily extended, and additional optimizations can be added. Catalyst first creates a parsed logical plan from DSL and SQL expressions
+
+Catalyst first creates a parsed logical plan from DSL and SQL expressions. Then it checks the names of tables, columns, and qualified names (called relations) and creates an analyzed logical plan.
+
+In the next step, Catalyst tries to optimize the plan by rearranging and combining the lower-level operations. It might decide to move a filter operation before a join so as to reduce the amount of data involved in the join, for example. This step produces an optimized logical plan. A physical plan is then calculated from the optimized plan.
+
+Logical optimization means Catalyst tries to push predicates down to data sources so that subsequent operations work on as small a dataset as possible. During physical
+planning, instead of performing a shuffle join, for example, Catalyst may decide to broadcast one of the two datasets if it’s small enough (smaller than 10 MB).
+
+EXAMINING THE EXECUTION PLAN
+You can see the results of optimizations and examine the generated plans in two ways: by using DataFrame’s explain method or by consulting the Spark Web UI. Let’s again
+
+scala> val postsFiltered = postsDf.filter('postTypeId === 1).withColumn("ratio", 'viewCount / 'score).where('ratio < 35)
+scala> postsFiltered.explain(true)
+
+######################################################################################################## 
+
+Reading Data From All these folders
+
+As we said earlier, saveAsTextFiles creates one folder per mini-batch. If you look at your output folders, you’ll find two files in each of them, named part-00000 and _SUCCESS. _SUCCESS means writing has finished successfully, and part-00000 contains the counts that were calculated.
+
+Reading data from all these folders might seem difficult, but it’s simple using the Spark API. You can read several text files in one go using asterisks (*) when specifying paths for SparkContext’s textFile method. To read all the files you just generated into a single RDD, you can use the following expression:
+
+val allCounts = sc.textFile("/home/spark/ch06output/output*.txt")
+The asterisk in this case replaces the generated timestamps.
+
+If we have one folder folder having all .txt files, we can read them all using sc.textFile("folder/*.txt"). 
+
+Additionally, use below too:
+
+sc._jsc.hadoopConfiguration().set('my.mapreduce.input.fileinputformat.input.dir', 'recursive')
+and the below too:
+
+sc._jsc.hadoopConfiguration().set('mapreduce.input.fileinputformat.input.dir.recursive', 'true')
+
+######################################################################################################## 
+
+SPECIFYING THE CHECKPOINTING DIRECTORY
+
+scala> sc.setCheckpointDir("/home/spark/checkpoint")
+
+As you may recall from chapter 4, checkpointing saves an RDD’s data and its complete DAG (an RDD’s calculation plan), so that if an executor fails, the RDD doesn’t have to be recomputed from scratch. It can be read from disk.
+
+######################################################################################################## 	
+
+Obtaining good performance
+
+You can access the Spark web UI on port 4040, by default.
+The Streaming tab automatically appears on the web UI if you’re running a Spark Streaming application (StreamingContext).
+
+Input Rate—Number of incoming records per second
+■ Scheduling Delay—Time the new mini-batches spend waiting for their jobs to be scheduled
+■ Processing Time—Time required to process the jobs of each mini-batch
+■ Total Delay—Total time taken to handle a batch
+
+######################################################################################################## 
+
+Achieving fault-tolerance
+
+Streaming applications are usually long-running applications, and failures of driver and executor processes are to be expected. Spark Streaming makes it possible to survive these failures with zero data loss.
+
+RECOVERING FROM EXECUTOR FAILURES
+Data received through receivers running in executors is replicated in the cluster. If an executor running a receiver fails, the driver will restart the executor on a different node, and the data will be recovered. You don’t need to enable this behavior specifically. Spark does this automatically.
+
+RECOVERING FROM DRIVER FAILURES
+In the case of a failure of the driver process, the connection to the executors is lost, and the application needs to be restarted. As we’ll discuss in chapters 11 and 12, the cluster manager can automatically restart the driver process (if submitted with the --supervise option when running in a Spark Standalone cluster, by using cluster mode in YARN, or by using Marathon in Mesos).
+
+Once the driver process is restarted, Spark Streaming can recover the state of the previous streaming application by reading the checkpointed state of the streaming context. Spark’s StreamingContext has a special method of initialization to take advantage of this feature. The method is StreamingContext.getOrCreate(), The getOrCreate method first checks the checkpoint directory to see if any state exists there. If so, it loads the previous checkpointed state and skips the StreamingContext initialization. Otherwise, it calls the initialization function.
+
+######################################################################################################## 
+Spark runtime components
+
+Please see the diagram in 286
+
+There are two basic ways the driver program can be run.
+
+■ Cluster-deploy mode is shown in figure 10.1. In this mode, the driver process runs as a separate JVM process in a cluster, and the cluster manages its resources (mostly JVM heap memory).
+
+■ Client-deploy mode is shown in figure 10.2. In this mode, the driver is running in the client’s JVM process and communicates with the executors managed by the cluster.
+
+Please see the diagram in 287
+
+CREATION OF THE SPARK CONTEXT
+
+Once the driver is started, it starts and configures an instance of SparkContext.There can be only one Spark context per JVM. Although the configuration option spark.driver.allowMultiple.Contexts exists, it’s misleading because using multiple Spark contexts is discouraged
+
+######################################################################################################## 
+
+Job and resource scheduling
+
+Resources for Spark applications are scheduled as executors (JVM processes) and CPU (task slots) and then memory is allocated to them. The cluster manager of the currently running cluster and the Spark scheduler grant resources for execution of Spark jobs.
+
+Once the application’s driver and executors are running, the Spark scheduler communicates with them directly and decides which executors will run which tasks.This is called job scheduling, and it affects CPU resource usage in the cluster. Indirectly, it also affects memory use, because more tasks running in a single JVM use more of its
+heap.
+
+Thus, two levels of Spark resource scheduling exist:
+
+■ Cluster resource scheduling for allocating resources for Spark executors of different Spark applications.
+
+■ Spark resource scheduling for scheduling CPU and memory resources within a single application.
+
+Cluster resource scheduling
+Cluster resource scheduling (dividing cluster resources among several applications running in a single cluster) is the responsibility of the cluster manager. This works similarly on all cluster types supported by Spark, but with minor differences. All supported cluster managers provide requested resources for each application and free up the requested resources when the application closes.
+
+Spark grants CPU resources in one of two ways: FIFO (first-in-first-out) scheduling and fair scheduling. The Spark parameter spark.scheduler.mode sets the scheduler mode, and it takes two possible values: FAIR and FIFO.
+
+FIFO SCHEDULING
+FIFO scheduling functions on the principle of first-come, first-served. The first job that requests resources takes up all the necessary (and available) executor task slots (assume each job consists of only one stage).
+If there are 500 task slots in the cluster, and the first job requires only 50, other jobs can use the remaining 450 while the first job runs. But if the first job requires 800 task slots, all the other jobs must wait until the first
+job’s tasks have released executor resources. 
+
+FIFO scheduling is the default scheduler mode, and it works best if your application is a single-user application
+that is running only one job at a time.
+
+FAIR SCHEDULING
+Fair scheduling evenly distributes available resources (executor threads) among competing Spark jobs in a round-robin fashion. It’s a better option for multiuser applications running several jobs simultaneously. Spark’s fair scheduler was inspired by YARN’s fair scheduler. Please see the diagram 10.4 - Page 291
+
+The number of jobs and tasks in the example is the same as in the FIFO scheduling example, so that you can see the difference between the two scheduling modes. Tasks from job 2 are now executing in parallel with the tasks from job 1. Other tasks from job 1 are waiting for free task slots. In this way, a shorter-running job (job 2) can run
+immediately without having to wait for the longer-running job (job 1) to finish, although job 2 wasn’t the first to request task slots.
+
+######################################################################################################## 
+
+SPECULATIVE EXECUTION OF TASKS
+
+An additional option for configuring the way Spark dispatches tasks to executors is speculative execution, which attempts to solve the problem of stragglers (tasks that are taking longer to finish than other tasks at the same stage). One of your executors may get bogged down with some other process, using up all of its CPU resources, which
+prevents it from finishing your tasks in a timely fashion. In that case, if speculative execution is turned on, Spark may try to run the same task for that partition on some other executor. If that happens and the new task finishes, Spark accepts the results of the new task and discards the old task’s results. That way, a single malfunctioning executor doesn’t cause the job to stall.
+
+Speculative execution is turned off by default. Turn it on by setting the spark.speculation parameter to true. When turned on, Spark checks every spark.speculation.interval setting to determine whether any of the tasks need to
+be restarted.
+
+Two additional parameters determine the criteria for selecting which tasks need to be started again. spark.speculation.quantile determines the percentage of tasks that need to complete before speculation is started for a stage, and spark.speculation.multiplier sets how many times a task needs to run before it
+needs to be restarted.
+
+For some jobs (for example, those that write to external systems such as relational databases), speculative execution isn’t desirable because two tasks can run simultaneously on the same partition and can write the same data to the external system. 
+
+Although one task may finish earlier than the other, it may be prudent to explicitly disable speculation, especially if you don’t have complete control over Spark’s configuration affecting your application.
+
+######################################################################################################## 
+
+about accumulators and broadcast variables
+and how to use them to share data among Spark executors while a job is running.
+
+USING THE FOLDBYKEY TRANSFORMATION AS AN ALTERNATIVE TO REDUCEBYKEY
+foldByKey does the same thing as reduceByKey, except that it requires an additional
+parameter, zeroValue, in an extra parameter list that comes before the one with the
+reduce function
+
+Using Spark’s data partitioners
+Partitioning of RDDs is performed by Partitioner objects that assign a partition
+index to each RDD element. Two implementations are provided by Spark: HashPartitioner and RangePartitioner. 
+
+HashPartitioner is the default partitioner in Spark. It calculates a partition index
+based on an element’s Java hash code (or a key’s hash code in pair RDDs), according
+to this simple formula: partitionIndex = hashCode % numberOfPartitions. 
+
+The default number of data partitions when using HashPartitioner is determined
+by the Spark configuration parameter spark.default.parallelism. If that parameter isn’t specified by the user, it will be set to the number of cores in the cluster. (Chapter 12 covers setting Spark configuration parameters.)

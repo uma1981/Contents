@@ -1,0 +1,140 @@
+Classes and Objects
+-------------------
+
+4.1 Classes, fields, and methods
+--------------------------------
+A class is a blueprint for objects. Once you define a class, you can create objects from the class blueprint with the keyword new. 
+
+For example, given the class definition:
+
+class ChecksumAccumulator {
+// class definition goes here
+}
+
+You can create ChecksumAccumulator objects with:
+
+new ChecksumAccumulator
+
+Inside a class definition, you place fields and methods, which are collectively called members.Fields, which you define with either val or var, are variables that refer to objects. Methods, which you define with def, contain executable code.
+
+For example, if you defined a ChecksumAccumulator class and gave it a var field named sum:
+
+class ChecksumAccumulator {
+var sum = 0
+}
+
+and you instantiated it twice with:
+val acc = new ChecksumAccumulator
+val csa = new ChecksumAccumulator
+
+Please see the picture, how memory is allocated.
+
+Since sum, a field declared inside class ChecksumAccumulator, is a var,not a val, you can later reassign to sum a different Int value, like this:
+
+acc.sum = 3
+
+One thing to notice about this picture is that there are two sum variables,one in the object referenced by acc and the other in the object referenced by csa. Fields are also known as instance variables, because every instance gets its own set of the variables.
+
+You can see this illustrated here not only in that you see two sum variables, but also that when you changed one, the other was unaffected.
+
+Another thing to note in this example is that you were able to mutate the object acc referred to, even though acc is a val. What you can’t do with acc (or csa), given that they are vals, not vars, is reassign a different object to them. 
+
+For example, the following attempt would fail:
+// Won’t compile, because acc is a val
+acc = new ChecksumAccumulator
+
+The first step is to prevent outsiders from accessing the fields directly by making the fields private. Because private fields can only be accessed by methods defined in the same class, all the code that can update the state will be localized to the class. To declare a field private, you place a
+
+private access modifier in front of the field, like this:
+
+class ChecksumAccumulator {
+private var sum = 0
+}
+
+Given this definition of ChecksumAccumulator, any attempt to access sum from the outside of the class would fail:
+
+val acc = new ChecksumAccumulator
+acc.sum = 5 // Won’t compile, because sum is private
+
+Note: The way you make members public in Scala is by not explicitly specifying any access modifier. Put another way, where you’d say “public” in Java, you simply say nothing in Scala. Public is Scala’s default access level.
+
+Now that sum is private, the only code that can access sum is code defined inside the body of the class itself.
+
+Any parameters to a method can be used inside the method. One important characteristic of method parameters in Scala is that they are vals, not vars.1 If you attempt to reassign a parameter inside a method in Scala, therefore, it won’t compile:
+def add(b: Byte): Unit = {
+b = 1 // This won’t compile, because b is a val
+sum += b
+} 
+
+you can express them using a more concise style. First, the return at the end of the checksum method is superfluous and can be dropped. In the absence of any explicit return statement, a Scala method returns the last value computed by the method.
+
+Another shorthand for methods is that you can leave off the curly braces if a method computes only a single result expression. If the result expression is short, it can even be placed on the same line as the def itself.
+
+def add(b: Byte): Unit = sum += b
+
+Another way to express such methods is to leave off the result type and the equals sign, and enclose the body of the method in curly braces. In this form, the method looks like a procedure, a method that is executed only for its side effects.
+
+def add(b: Byte) { sum += b }
+
+This is true no matter what the body contains, because the Scala compiler can convert any type to Unit. For example, if the last result of a method is a String, but the method’s result type is declared to be Unit, the String will
+be converted to Unit and its value lost. Here’s an example:
+
+scala> def f(): Unit = "this String gets lost"
+f: ()Unit
+
+In this example, the String is converted to Unit because Unit is the declared result type of function f. The Scala compiler treats a function defined in the procedure style, i.e., with curly braces but no equals sign, essentially
+the same as a function that explicitly declares its result type to be Unit:
+
+scala> def g() { "this String gets lost too" }
+g: ()Unit
+
+The puzzler occurs, therefore, if you intend to return a non-Unit value, but forget the equals sign. To get what you want, you’ll need to insert the missing equals sign:
+
+scala> def h() = { "this String gets returned!" }
+
+Simply to understand this, when there is equal sign(=) missing, then return is always Unit.
+
+Semicolon inference
+-------------------
+In a Scala program, a semicolon at the end of a statement is usually optional.
+
+On the other hand, a semicolon is required if you write multiple statements on a single line
+
+Singleton objects
+-----------------
+As mentioned in Chapter 1, one way in which Scala is more object-oriented than Java is that classes in Scala cannot have static members. Instead, Scala has singleton objects. A singleton object definition looks like a class definition, except instead of the keyword class you use the keyword object.
+
+No object is required to call methods declared inside singleton object. So scala creates a singleton object to provide entry point for your program execution.
+
+// In file ChecksumAccumulator.scala
+import scala.collection.mutable.Map
+object ChecksumAccumulator {
+private val cache = Map[String, Int]()
+def calculate(s: String): Int = if (cache.contains(s))
+ cache(s)
+ else 
+{
+ val acc = new ChecksumAccumulator
+ for (c <- s)
+ acc.add(c.toByte)
+ val cs = acc.checksum()
+ cache += (s -> cs)
+ cs
+}
+}
+
+The singleton object in this figure is named ChecksumAccumulator, the same name as the class in the previous example. When a singleton object shares the same name with a class, it is called that class’s companion object. You must define both the class and its companion object in the same source file. The class is called the companion class of the singleton object. A class and its companion object can access each other’s private members.
+
+You can invoke methods on singleton objects using a syntax: the name of the singleton object, a dot, and the name of the method. For example, you can invoke the calculate method of singleton object ChecksumAccumulator like this:
+
+ChecksumAccumulator.calculate("Every value is an object.")
+
+One difference between classes and singleton objects is that singleton objects cannot take parameters, whereas classes can. Because you can’t instantiate
+a singleton object with the new keyword, you have no way to pass parameters to it. Each singleton object is implemented as an instance of a synthetic class referenced from a static variable, so they have the same initialization semantics as Java statics. In particular, a singleton object is initialized the first time some code accesses it.
+
+A singleton object that does not share the same name with a companion class is called a standalone object. You can use standalone objects for many
+purposes, including collecting related utility methods together, or defining an entry point to a Scala application.
+
+Scala Application and Application trait
+---------------------------------------
+-Please refer the PDF.

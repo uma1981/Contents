@@ -1,0 +1,100 @@
+CHAPTER 19
+Locking
+----------
+While HiveQL is an SQL dialect, Hive lacks the traditional support for locking on a column, row, or query, as typically used with update or insert queries. Files in Hadoop are traditionally write-once (although Hadoop does support limited append semantics). Because of the write-once nature and the streaming style of MapReduce, access to fine-grained locking is unnecessary.
+
+However, since Hadoop and Hive are multi-user systems, locking and coordination are valuable in some situations. For example, if one user wishes to lock a table, because an INSERT OVERWRITE query is changing its content, and a second user attempts to issue a query against the table at the same time, the query could fail or yield invalid results.
+
+Locking Support in Hive with Zookeeper
+--------------------------------------
+Hive includes a locking feature that uses Apache Zookeeper for locking. Zookeeper implements highly reliable distributed coordination. Other than some additional setup and configuration steps, Zookeeper is invisible to Hive users.
+
+Create the Zookeeper configuration file /opt/zookeeper/conf/zoo.cfg with the following contents, edited as appropriate for your installation:
+
+tickTime=2000
+dataDir=/var/zookeeper
+clientPort=2181
+initLimit=5
+syncLimit=2
+server.1=zk1.site.pvt:2888:3888
+server.2=zk2.site.pvt:2888:3888
+server.3=zk3.site.pvt:2888:3888
+
+On each server, create a myid file and ensure the contents of the file matches the ID from the configuration. For example, for the file on the zk1.site.pvt node, you could use the following command to create the file:
+
+$ sudo echo 1 > /var/zookeeper/myid
+Finally, start Zookeeper:
+$ sudo /opt/zookeeper/bin/zkServer.sh start
+
+Once the Zookeeper nodes are in communication with each other, it will be possible to create data on one Zookeeper node and read it from the other. For example, run this session on one node:
+
+$ /opt/zookeeper/bin/zkCli.sh -server zk1.site.pvt:2181
+[zk: zk1.site.pvt:2181(CONNECTED) 3] ls /
+[zookeeper]
+[zk: zk1.site.pvt:2181(CONNECTED) 4] create /zk_test my_data
+Created /zk_test
+
+Then, run this session on a different node or a different terminal window on the first node:
+
+$ /opt/zookeeper/bin/zkCli.sh -server zk1.site.pvt:2181
+[zk: zk1.site.pvt:2181(CONNECTED) 0] ls /
+[zookeeper, zk_test]
+[zk: zk1.site.pvt:2181(CONNECTED) 1]
+
+Whew! Okay, the hard part is over. Now we need to configure Hive so it can use these Zookeeper nodes to enable the concurrency support.
+
+In the $HIVE_HOME/hive-site.xml file, set the following properties:
+<property>
+	<name>hive.zookeeper.quorum</name>
+	<value>zk1.site.pvt,zk1.site.pvt,zk1.site.pvt</value>
+	<description>The list of zookeeper servers to talk to.
+	This is only needed for read/write locks.</description>
+</property>
+
+<property>
+	<name>hive.support.concurrency</name>
+	<value>true</value>
+	<description>Whether Hive supports concurrency or not.
+	A Zookeeper instance must be up and running for the default
+	Hive lock manager to support read-write locks.</description>
+</property>
+
+With these settings configured, Hive automatically starts acquiring locks for certain queries. You can see all current locks with the SHOW LOCKS command:
+
+hive> SHOW LOCKS;
+default@people_20111230 SHARED
+default@places SHARED
+default@places@hit_date=20111230 SHARED
+
+The following more focused queries are also supported, where the ellipsis would be replaced with an appropriate partition specification, assuming that places is partitioned:
+
+hive> SHOW LOCKS places EXTENDED;
+default@places SHARED
+...
+hive> SHOW LOCKS places PARTITION (...);
+default@places SHARED
+...
+hive> SHOW LOCKS places PARTITION (...) EXTENDED;
+default@places SHARED
+...
+There are two types of locks provided by Hive, and they are enabled automatically when the concurrency feature is enabled. A shared lock is acquired when a table is read. Multiple, concurrent shared locks are allowed.
+
+An exclusive lock is required for all other operations that modify the table in some way. They not only freeze out other table-mutating operations, they also prevent queries by other processes.
+
+When the table is partitioned, acquiring an exclusive lock on a partition causes a shared lock to be acquired on the table itself to prevent incompatible concurrent changes from occurring, such as attempting to drop the table while a partition is being modified. Of course, an exclusive lock on the table globally affects all partitions.
+
+Explicit, Exclusive Locks
+-------------------------
+You can also manage locks explicitly. For example, suppose one Hive session creates an exclusive lock on table people:
+
+hive> LOCK TABLE people EXCLUSIVE;
+
+Here is another Hive session attempt to query the locked table:
+
+hive> SELECT COUNT(*) FROM people;
+conflicting lock present for default@people mode SHARED
+FAILED: Error in acquiring locks: locks on the underlying objects
+cannot be acquired. retry after some time
+
+The table can be unlocked using the UNLOCK TABLE statement, after which queries from other sessions will work again:
+hive> UNLOCK TABLE people;

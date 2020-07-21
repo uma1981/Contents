@@ -1,0 +1,613 @@
+Introduction to RDDs
+--------------------
+According to the seminal paper on Spark,RDDs are immutable, fault-tolerant,parallel data structures that let users explicitly persist intermediate results in memory,control their partitioning to optimize data placement, and manipulate them using a rich set of operators. Let’s dissect this description to truly understand the ideas behind the RDD concept
+
+Immutable
+---------
+RDDs are designed to be immutable, which means you can’t specifically modify a particular row in the dataset represented by that RDD. You can call one of the available RDD operations to manipulate the rows in the RDD into the way you want, but that operation will return a new RDD. The basic RDD will stay unchanged, and the new RDD will contain the data in the way that you want. The immutability of RDDs essentially requires an RDD to carry its lineage information that Spark leverages to efficiently provide the fault tolerance capability.
+
+Fault Tolerant
+--------------
+The ability to process multiple datasets in parallel usually requires a cluster of machines to host and execute the computational logic. If one or more of those machines dies or becomes extremely slow because of unexpected circumstances, then how will that affect the overall data processing of those datasets? The good news is that Spark automatically takes care of handling the failure on behalf of its users by rebuilding the failed portion using the lineage information, which will be discussed later in this chapter.
+
+Parallel Data Structures
+------------------------
+Imagine the use case where someone gives you a large log file that is 1TB size and you are asked to find out how many log statements contain the word exception in it. A slow solution would be to iterate through that log file from the beginning to the end and execute the logic of determining whether a particular log statement contains the word exception. A faster solution would be to divide that 1TB file into several chunks and execute the aforementioned logic on each chunk in a parallelized manner to speed up the overall processing time. Each chunk contains a collection of rows.
+
+The collection of rows is essentially the data structure that holds a set of rows and provides the ability to iterate through each row. Each chunk contains a collection of rows, and all the chunks are being processed in parallel. This is where the phrase parallel data structures comes from.
+
+In-Memory Computing
+-------------------
+Building on that solid foundation, RDD pushes the speed boundary by introducing a novel idea, which is the ability to do distributed in-memory computation.
+
+In-memory computation defines as instead of storing data in some slow disk drives the data is kept in random access memory(RAM)
+
+In the world of big data processing, once you are able to extract insights from large datasets in a reliable manner using a set of rudimentary techniques, then you want to use more sophisticated techniques as well to reduce the amount of time it takes to do that. This is where distributed in-memory computation helps. The sophisticated technique I am referring to is using machine learning to perform various predictions or to extract patterns out of large datasets. Machine learning algorithms are iterative in nature, meaning they need to go through many iterations to arrive at an optimal state.
+This is where distributed in-memory computation can help in reducing the completion time from days to hours. 
+
+Another use case that can hugely benefit from distributed in-memory computation is interactive data mining, where multiple ad hoc queries are performed on the same subset of data. If that subset of data is persisted in memory,those queries will take seconds and not minutes to complete.
+
+If we Keep the data in-memory, it improves the performance by an order of magnitudes.
+
+Data Partitioning and Placement
+-------------------------------
+The information about how the rows in a dataset are partitioned into chunks and about their physical location is considered to be the dataset metadata. This information helps Spark perform optimizations while executing the computational logic.
+
+For example, while joining two datasets, the data partition information is useful to determine whether it is necessary to move the rows from various chunks of the two datasets to the same location to perform the join. Moving data across machines is an expensive operation, and therefore minimizing it would dramatically reduce the overall processing time.
+
+Data placement information helps to reinforce the data locality concept, which means bringing the computation to where the data lives. Knowing where the chunks are located on a cluster, Spark can use those machines to host and execute the computational logic on those chunks, and therefore the time to read the rows from those chunks would be much less than reading them from a different node on the cluster.
+
+Rich Set of Operations
+-----------------------
+RDDs provide a rich set of commonly needed data processing operations. They include the ability to perform data transformation, filtering, grouping, joining, aggregation, sorting, and counting.
+
+One thing to note about these operations is that they operate at the coarse-grained level, meaning the same operation is applied to many rows, not to any specific row.
+
+In summary, an RDD is represented as an abstraction and is defined by the following five pieces of information:
+
+• A set of partitions, which are the chunks that make up the entire dataset
+• A set of dependencies on parent RDDs
+• A function for computing all the rows in the data set
+• Metadata about the partitioning scheme (optional)
+• Where the data lives on the cluster (optional); if the data lives on HDFS, then it would be where the block locations are located
+
+The Spark runtime uses these five pieces of information to schedule and execute the user data processing logic that is expressed via the RDD operations, which are described in the following section.
+
+The first three pieces of information make up the lineage information, which Spark uses for two purposes. The first one is determining the order of execution of RDDs, and the second one is for failure recovery purposes.
+
+RDD Operations
+--------------
+This section will go into detail about the commonly used RDD operations and their behavior. Before going into the details, it is imperative to internalize a few core concepts about them.
+
+The RDD operations operate at a coarse-grained level, which was described earlier.Each row in a dataset is represented as a Java object, and the structure of this Java object is opaque to Spark. The user of RDD has complete control over how to manipulate this
+
+The RDD operations are classified into two types: transformations and actions. Below describes the main differences between them.
+
+Type 			Evaluation 		Returned Value
+----			----------		--------------
+Transformation 		Lazy 			Another RDD
+Action 			Eager 			Some result or write result to disk
+
+Transformation operations are lazily evaluated, meaning Spark will delay the evaluations of the invoked operations until an action is taken. 
+
+On the other hand, invoking an action operation will trigger the evaluation of all the transformations that preceded it, and it will either return some result to the driver or write data to a storage system, such as HDFS or the local file system.
+
+The lazy evaluation design makes sense in the world of big data. It is not desirable to immediately trigger an evaluation of every single filtering operation when a dataset is large in size. The typical end goal of a data processing task is to write the result out to some external storage system or to see how many records there are. This is when it makes sense to evaluate all the previously specified computational logic. 
+
+One important optimization technique behind the lazy evaluation concept is the ability to collapse or combine similar transformations into a single operation during execution time.
+
+In short, RDDs are immutable, RDD transformations are lazily evaluated, and RDDactions are eagerly evaluated and trigger the computation of your data processing logic.
+
+Creating RDDs
+-------------
+Before invoking any transformation or action operations, you must have an RDD in hand. There are three ways to create an RDD. 
+The first way to create an RDD is to parallelize an object collection, meaning converting it to a distributed dataset that can be operated in parallel.
+
+Below creating an RDD from an Object Collection
+
+val stringList = Array("Spark is awesome","Spark is cool")
+val stringRDD = spark.sparkContext.parallelize(stringList)
+
+The stringRDD variable represents an RDD that you can apply transformation or action operations to.
+
+The second way to create an RDD is to read a dataset from a storage system, which can be a local computer file system, HDFS, Cassandra, Amazon S3, and so on.
+
+Below creating an RDD from a File Data Source
+
+val fileRDD = spark.sparkContext.textFile("/tmp/data.txt")
+
+The first argument of the textFile method is an URI that points to a path or a file on the local machine or to a remote storage system. When it starts with an hdfs:// prefix, it points to a path or a file that resides on HDFS, and when it starts with an s3n:// prefix, then it points to a path or a file that resides on AWS S3. If a URI points to a directory, then the textFile method will read all the files in that directory.
+
+The textFile method assumes each file is a text file and each line is delimited by a new line. The textFile method returns an RDD that represents all the lines in all the files. 
+
+One important to note for Spark beginners is that the textFile method is lazily evaluated, which means if you made the mistake of specifying a wrong file or path or misspelling a directory name, then this problem would not surface until one of the actions is taken.
+
+The third way to create an RDD is by invoking one of the transformation operations on an existing RDD. Once you start becoming competent with Spark, you will do this all the time without thinking twice about it.
+
+Transformations
+--------------
+By going through the following examples, ideally you get a sense of how easy it is to manipulate small and large datasets using the functional APIs provided by RDD.
+
+Transformation Examples
+-----------------------
+The following examples build on the stringRDD created in the “Creating RDDs” section.
+
+map(func)
+---------
+The most fundamental, versatile, and commonly used transformation is the map operation. It is used to transform some aspect of the data per row to something else.
+
+val stringList = Array("Spark is awesome","Spark is cool")
+val stringRDD = spark.sparkContext.parallelize(stringList)
+val allCapsRDD = stringRDD.map(line => line.toUpperCase)
+allCapsRDD.collect().foreach(println)
+
+O/P
+---
+SPARK IS COOL
+SPARK IS AWESOME
+
+Collect statement will collect all the rows in allCapsRDD and transfer them to the driver side, then they will be printed out one per line.
+
+Sometimes the transformation logic is complex and requires calling other APIs. In that case, it is best to define a function to encapsulate that complexity.
+
+def toUpperCase(line:String) : String = { line.toUpperCase }
+stringRDD.map(l => toUpperCase(l)).collect.foreach(println)
+
+The O/P of above two approaches are identical.
+
+Another common usage of the map transformation is to convert data in text  format to a Scala object via a case class. See the below example.
+
+case class Contact(id:Long, name:String, email:String)
+
+val contactData = Array("1#John Doe#jdoe@domain.com","2#MaryJane#mjane@domain.com")
+val contactDataRDD = spark.sparkContext.parallelize(contactData)
+val contactRDD = contactDataRDD.map(l => {
+ val contactArray = l.split("#")
+ Contact(contactArray(0).toLong, contactArray(1), contactArray(2))
+})
+contactRDD.collect.foreach(println)
+
+O/P
+---
+Contact(1,John Doe,jdoe@domain.com)
+Contact(2,Mary Jane,mjane@domain.com)
+
+One last note about the map transformation is that the input type and the return type of func don’t have to be of the same type.
+
+Below uses a map transformation to transform a collection of strings to a collection of integers. The stringRDD is RDD[String], and the stringLenRDD is RDD[Int].
+
+val stringLenRDD = stringRDD.map(l => l.length)
+stringLenRDD.collect.foreach(println)
+
+flatMap(func)
+-------------
+The second most commonly used transformation is flatMap. Let’s say you want to transform the stringRDD from a collection of strings to a collection of words. The flatMap transformation is perfect for this use case.
+
+val stringList = Array("Spark is awesome","Spark is cool")
+val stringRDD = spark.sparkContext.parallelize(stringList)
+val wordRDD = stringRDD.flatMap(line => line.split(" "))
+wordRDD.collect().foreach(println)
+
+O/P
+---
+Spark
+is
+awesome
+Spark
+is
+cool
+
+The Behavior of map vs. flatMap
+-------------------------------
+
+stringRDD.map(line => line.split(" ")).collect
+stringRDD.flatMap(line => line.split(" ")).collect
+
+The Output of the map Transformation
+Array[Array[String]] = Array(Array(Spark, is, awesome), Array(Spark, is, cool))
+
+The Output of the flatMap Transformation
+Array[String] = Array(Spark, is, awesome, Spark, is, cool)
+
+The logic inside both the map and flatMap methods is identical, but their output is very different.flatMap transformation flattens the array, and therefore its output contains only the single array of words. flatMap is a powerful and useful transformation to know, so make sure to grok it.
+
+filter(func)
+------------
+Another commonly used transformation is the filter transformation. It does what its name sounds like, which is to filter a dataset down to the rows that meet the conditions defined inside the given func. 
+
+A simple example is to find out how many lines in the stringRDD contain the word awesome.
+
+val awesomeLineRDD = stringRDD.filter(line => line.contains("awesome"))
+awesomeLineRDD.collect
+
+O/P
+---
+Array(Spark is awesome)
+
+Mappartition and MapartitionwithIndex
+-------------------------------------
+Both mapPartitions and mapPartitionsWithIndex are useful transformations for situations where there is a need to perform some expensive and required setups before
+the transformation of each row starts. Instead of performing this expensive operation per row, you can reduce it to just the number of partitions.
+
+The mapPartition transformation calls the provided func once per partition. If an RDD has ten partitions, then the given func will be called exactly ten times.
+
+Have to check this in PDF.
+
+
+Union(otherRDD)
+---------------
+A union transformation takes another RDD as an argument, and it will return an RDD that combines the rows from both RDDs. This is useful for situations when there is a need to append some rows to an existing RDD. This transformation does not remove duplicate rows of the resulting RDD. 
+
+val rdd1 = spark.sparkContext.parallelize(Array(1,2,3,4,5))
+val rdd2 = spark.sparkContext.parallelize(Array(1,6,7,8))
+val rdd3 = rdd1.union(rdd2)
+rdd3.collect()
+
+Output of the union Transformation
+Array[Int] = Array(1, 2, 3, 4, 5, 1, 6, 7, 8)
+
+intersection(otherRDD)
+----------------------
+If there were two RDDs and there is a need to find out which rows exist in both of them, then this is the right transformation to use. The way this transformation figures out which rows exist in both RDDs is by comparing their hash codes. This transformation guarantees the returned RDD will not contain any duplicate rows. Unlike the map and filter transformations, the implementation of this transformation moves rows with the same hash code to the same executor to perform the intersection. 
+
+
+Below Intersection of Two RDDs
+
+val rdd1 = spark.sparkContext.parallelize(Array("One", "Two", "Three"))
+val rdd2 = spark.sparkContext.parallelize(Array("two","One","threed","One"))
+val rdd3 = rdd1.intersection(rdd2)
+rdd3.collect()
+
+Output of an Intersection Transformation
+
+Array[Int] = Array(One)
+
+substract(otherRDD)
+-------------------
+A good use case for this transformation is when there is a need to compute the statistics of word usage in a certain book or a set of speeches. A typical first task in this process is to remove the stop words, which refers to a set of commonly used words in a language. In the English language, examples of stop words are is, it, the, and and. So, if you have one RDD that contains all the words in a book and another RDD that contains just the list of stop words, then subtracting the first one from the second one will yield another RDD that contains only nonstop words. 
+
+val words = spark.sparkContext.parallelize(List("The amazing thing about
+spark is that it is very simple to learn")).flatMap(l => l.split(" ")).map(w => w.toLowerCase)
+
+val stopWords = spark.sparkContext.parallelize(List("the it is to that")).flatMap(l => l.split(" "))
+val realWords = words.substract(stopWords)
+realWords.collect()
+
+Output of the subtract Transformation
+Array[String] = Array(simple, learn, amazing, spark, about, very, thing)
+
+distinct( )
+----------
+The distinct transformation represents another flavor of transformation where it doesn’t take any function or another RDD as an input parameter. Instead, it is a directive to the source RDD to remove any duplicate rows. The question is, how does it determine whether two rows are the same? A common approach is to transpose the content of each row into a numeric value by computing the hash code of the content. That is exactly what Spark does. To remove duplicate rows in an RDD, it simply computes the hash code of each row and compares them to determine whether two rows are identical. 
+
+val duplicateValueRDD = spark.sparkContext.parallelize(List("one", 1,"two", 2, "three", "one", "two", 1, 2)
+duplicateValueRDD.distinct().collect
+
+As expected, the output contains only unique rows. 
+
+Array[Any] = Array(1, 2, two, one, three)
+
+sample(withReplacement, fraction, seed)
+---------------------------------------
+Sampling is a common technique used in statistical analysis or machine learning to either reduce a large dataset to a more manageable size or to split the input dataset into a training set and a validation set when training a machine learning model.
+This transformation performs the sampling of the rows in the source RDD based on the following three inputs: with replacement, fraction, and seed values. The withReplacement parameter determines whether an already sampled row will be placed back into RDD for the next sampling.
+
+If the withReplacement parameter value is true, it means a particular row may appear multiple times in the output. The given fraction value must be between 0 and 1, and it is not guaranteed that the returned RDD will have the exact fraction number of rows of the original RDD. The optional seed parameter is used to seed the random generator, and it has a default value if one is not provided.
+
+Sampling with Replacement
+-------------------------
+val numbers = spark.sparkContext.parallelize(List(1,2,3,4,5,6,7,8,9,10), 2)
+numbers.sample(true, 0.3).collect
+
+If you run the second statement multiple times, you will see a value may appear multiple times in the output and the number of elements may be less than or more than fraction 0.3.
+
+Output of Sampling
+------------------
+Array[Int] = Array(1, 7, 7, 8)
+Array[Int] = Array(1, 6, 6, 7, 8, 9, 10)
+
+Actions
+------
+The data processing logic in a typical Spark application will contain one or more actions, which tell Spark to start executing all the transformation logic that led up to a particular action. Since an action is what triggers the execution of the transformation logic in an application, the absence of actions in a Spark application would mean that the application does absolutely nothing.
+
+In exploratory data analysis, it is fairly common either to want to know the size of the input dataset or to see what the first few rows look like. Spark provides a set of diverse actions to help with these use cases. One way to distinguish whether an RDD API is an action or a transformation is that an action will either write the content of an RDD out to a storage system or return all or a subset of the content to the user, but it doesn’t return an RDD. Table 3-3 lists the commonly used actions.
+
+Action Examples
+---------------
+collect( )
+
+It collects all the rows from each of the partitions in an RDD and brings them over to the driver program. If your RDD contains 100 million rows, then it is not a good idea to invoke the collect action because the driver program most likely doesn’t have sufficient memory to hold all those rows. As a result, the driver will most likely run into an out-of-memory error and your Spark application or shell will die. This action is typically used once the RDD is filtered down to a smaller size that can fit the memory size of the driver program.
+
+val numberRDD = spark.sparkContext.parallelize(List(1,2,3,4,5,6,7,8,9,10), 2)
+numberRDD.collect()
+
+The Output of the collect Action: An Array of Integers
+Array[Int] = Array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+count( )
+-------- 
+It returns the number of rows in an RDD by getting the count from all partitions and finally sums them up.
+
+val numberRDD = spark.sparkContext.parallelize(List(1,2,3,4,5,6,7,8,9,10), 2)
+numberRDD.count()
+
+Output of the count Action: A long
+Long = 10
+
+first( )
+---------
+This action returns the first row in an RDD. Now you may be wondering, what does the first row mean? Is there any ordering involved? It turns out it literally means the first row in the first partition. However, be careful about calling this action if your RDD is empty. In that case, this action will throw an exception.
+
+val numberRDD = spark.sparkContext.parallelize(List(1,2,3,4,5,6,7,8,9,10), 2)
+numberRDD.first()
+
+The Output of the first Action
+Int = 1
+
+take(n)
+-------
+This action returns the first n rows in the RDD by collecting rows from the first partition and then moves to the next partition until the number of rows matches n or the last partition is reached. If n is larger than the number of rows in the dataset, then it will return all the rows. take(1) is equivalent to the first() action. See Listing 3-38 for an
+example of using this action. 
+
+val numberRDD = spark.sparkContext.parallelize(List(1,2,3,4,5,6,7,8,9,10), 2)
+numberRDD.take(6)
+
+The Output of the take(6) Action
+Array[Int] = Array(1, 2, 3, 4, 5, 6)
+
+reduce(func)
+------------
+Compared to other actions, this one is pretty different. It reduces all the rows in the dataset to a single value using the provided function. A common use case is to perform a sum of all the integers in the dataset. There are two rules that the provided functions must follow. 
+
+The first one is it must be a binary operator, meaning it must take two arguments of the same type, and it produces an output of the same type. 
+
+The second one is it must follow the commutative and associative properties in order for the result to be computed correctly in a parallel manner. See the following note for more details about the commutative and associative properties.
+
+Defining an RDD of Integers
+val numberRDD = spark.sparkContext.parallelize(List(1,2,3,4,5,6,7,8,9,10), 2)
+
+Defining a function to perform addition
+def add(v1:Int, v2:Int) : Int = 
+{
+ println(s"v1: $v1, v2: $v2 => (${v1 + v2})")
+ v1 + v2
+}
+
+Using the Function add as an Argument for the reduce Action numberRDD.reduce(add)
+
+The Output from Calling the reduce Action
+
+v1: 1, v2: 2 => (3)
+v1: 6, v2: 7 => (13)
+v1: 3, v2: 3 => (6)
+v1: 13, v2: 8 => (21)
+v1: 6, v2: 4 => (10)
+v1: 10, v2: 5 => (15)
+v1: 21, v2: 9 => (30)
+v1: 30, v2: 10 => (40)
+v1: 15, v2: 40 => (55)
+res62: Int = 55
+
+Inspect the above O/P Carefully. Basically, at the beginning of each partition it takes the first two numbers and passes them into the provided function. For the remaining numbers in the partition, it takes the output of the function and passes it in as the first argument, and the value of the second argument is the next number in the partition.
+
+takeSample(withReplacement, n, [seed])
+--------------------------------------
+The behavior of this action is similar to the behavior of the sample transformation. The main difference is this action returns an array of sampled rows to the driver program. The same caution for the collect action is applicable here in terms of the large number of returned rows.
+
+takeOrdered(n, [ordering])
+--------------------------
+This action returns n rows in a certain order. The default ordering for this action is the natural ordering. If the rows are integers, then the default ordering is ascending. If you need to return n rows with the values in descending order, then you specify the reverse ordering. 
+
+Examples of the takeOrdered Action with Ascending and Descending Order
+
+val numberRDD = spark.sparkContext.parallelize(List(1,2,3,4,5,6,7,8,9,10), 2)
+numberRDD.takeOrdered(4)
+numberRDD.takeOrdered(4)(Ordering[Int].reverse)
+
+O/P
+---
+Array[Int] = Array(1, 2, 3, 4)
+Array[Int] = Array(10, 9, 8, 7)
+
+top(n, [ordering])
+------------------
+A good use case for using this action is for figure out the top k (largest) rows in an RDD as defined by the implicit ordering. This action does the opposite of the takeOrdered action.
+
+
+val numberRDD = spark.sparkContext.parallelize(List(1,2,3,4,5,6,7,8,9,10), 2)
+numberRDD.top(4)
+
+O/P
+---
+Array[Int] = Array(10, 9, 8, 7)
+
+saveAsTextFile(path)
+--------------------
+Unlike previous actions, this one does not return anything to the driver program. Instead, it will write out each row in the RDD as a string to the specified path. If an RDD has five partitions, the saveAsTextFile action will write out the rows in each partition in its own file; therefore, there will be five part files in the specified path.
+
+Notice that this action takes a path name rather than a file name, and it will fail if the specified path already exists. The intention for this behavior is to prevent the accidental overwriting of existing data.
+
+Working with Key/Value Pair RDD
+-------------------------------
+There are many use cases where there is a need to perform grouping by a certain key or aggregate or join two RDDs. For example, if you have a dataset that contains the population at the city level and you want to roll up at the state level, then you need to group those rows by state and sum the population of all the cities in each state. Spark provides a specific RDD type called a key/value pair RDD for these use cases. 
+
+To qualify as a key/value pair RDD, each row must consist of a tuple where the first element represents the key and the second element represents the value. The type of both key and value can be a simple type such as an integer or string or can be a complex type such as an object or a collection of values or another tuple.
+
+Creating Key/Value Pair RDD
+---------------------------
+In Scala, the simplest way to create a pair RDD is to arrange the data of each row into two parts: key and value. Then use the built-in Scala class called Tuple2, which is a shorthand version of using parentheses
+
+val rdd = sc.parallelize(List("Spark","is","an", "amazing", "piece", "of","technology"))
+val pairRDD = rdd.map(w => (w.length,w))
+pairRDD.collect().foreach(println)
+
+Above code creates a tuple for each row, where the key is the length and the value is the word. They are wrapped inside a pair of parentheses. Once each row is arranged in such a manner, then you can easily discover words with the same length by grouping by key
+
+Output of Pair RDD
+-------------------
+(5,Spark)
+(2,is)
+(2,an)
+(7,amazing)
+(5,piece)
+(2,of)
+(10,technology)
+
+groupByKey([numTasks])
+----------------------
+This transformation does exactly what it sounds like. It will group all the rows with the same key into a single row. Essentially the number of rows in the returned RDD will be the same as the number of unique keys in the parent RDD. Each row in the returned RDD contains a unique key and a list of values of that same key.
+
+val rdd = sc.parallelize(List("Spark","is","an", "amazing", "piece","of","technology"))
+val pairRDD = rdd.map(w => (w.length,w))
+val wordByLenRDD = pairRDD.groupByKey()
+wordByLenRDD.collect().foreach(println)
+
+Output of the groupByKey
+------------------------
+(10,CompactBuffer(technology))
+(2,CompactBuffer(is, an, of))
+(5,CompactBuffer(Spark, piece))
+(7,CompactBuffer(amazing))
+
+reduceByKey(func, [numTasks])
+-----------------------------
+This transformation is often used to reduce all the values of the same key to a single value. The process is carried out in two steps, as depicted in Figure PDF. The first one is to group the values of the same key together, and the second step is to apply the given reduce function to the list of values of each key.
+
+The implementation of this transformation contains a built-in optimization to perform this two-step process at two
+levels. The first level is at each individual partition, and the second level is across all the partitions. By applying this transformation at each individual partition first, it therefore collapses all the rows with the same key in the same partition to a single row, and as a result, the amount of data that needs to be moved across many partitions is dramatically reduced.
+
+Please see the picture in PDF
+
+val candyTx = sc.parallelize(List(("candy1", 5.2), ("candy2", 3.5),
+("candy1", 2.0),
+("candy2", 6.0),
+("candy3", 3.0))
+val summaryTx = candyTx.reduceByKey((total, value) => total + value)
+summaryTx.collect()
+
+Output of reduceByKey After Tallying the Price
+(candy1,7.2)
+(candy2,9.5)
+(candy3,3.0)
+
+sortByKey([ascending],[numTasks])
+---------------------------------
+This transformation is simple to understand. It sorts the rows according the key, and there is an option to specify whether the result should be in ascending (default) or descending order. Building on the above example, the key and value are swapped so you can sort the rows based on the transaction amount. 
+
+
+val summaryByPrice = summaryTx.map(t => (t._2, t._1)).sortByKey()
+summaryByPrice.collect
+
+O/P
+---
+Array[(Double, String)] = Array((3.0,candy3), (7.2,candy1), (9.5,candy2))
+
+If you want to sort the price in descending order, then you just need to set the value of the first parameter to false.
+
+val summaryByPrice = summaryTx.map(t => (t._2, t._1)).sortByKey(false)
+summaryByPrice.collect
+
+O/P
+---
+(9.5,candy2)
+(7.2,candy1)
+(3.0,candy3)
+
+join(otherRDD)
+--------------
+Performing any meaningful data analysis usually involves joining two or more datasets. The join transformation is used to combine the information of two datasets to enable rich data analysis or to extract insights. For example, if one dataset contains the transaction information and it has a member ID and details of the transaction and another dataset contains the member information, by joining these two datasets you can answer questions such as, what is the breakdown of the transactions by the age group, and which age group made the largest number of transactions?
+
+By joining the dataset of type (K,V) and dataset (K,W), the result of the joined dataset is (K,(V,W)). There are several variations of joining two datasets, like left and right outer joins.
+
+Below example has two datasets that are already set up as key/value pair RDDs. The first one contains the member transaction. The second contains information about each member ID and a group each member belongs to.
+
+val memberTx = sc.parallelize(List((110, 50.35), (127, 305.2), (126, 211.0),(105, 6.0),(165, 31.0), (110, 40.11)))
+val memberInfo = sc.parallelize(List((110, "a"), (127, "b"), (126, "b"),(105, "a"),(165, "c")))
+val memberTxInfo = memberTx.join(memberInfo)
+memberTxInfo.collect().foreach(println)
+
+The above join is the inner join type, where the output contains only the rows with matching keys from both datasets.
+
+O/P
+---
+(105,(6.0,a))
+(165,(31.0,c))
+(110,(50.35,a))
+(110,(40.11,a))
+(126,(211.0,b))
+(127,(305.2,b))
+
+Key/Value Pair RDD Actions
+--------------------------
+countByKey( )
+-------------
+For a given pair RDD, this action ignores the value of each row and reports only the number of values with the same key for each key to the driver. Notice the returned data is a Scala map data structure.
+
+val candyTx = sc.parallelize(List(("candy1", 5.2), ("candy2", 3.5),("candy1", 2.0), ("candy3", 6.0)))
+candyTx.countByKey()
+
+O/P
+---
+scala.collection.Map[String,Long] = Map(candy1 -> 2, candy2 -> 1, candy3 -> 1)
+
+collectAsMap( )
+---------------
+Similar to the collect action, this one brings the entire dataset to the driver side as a map, where each entry represents a row. 
+
+val candyTx = sc.parallelize(List(("candy1", 5.2), ("candy2", 3.5),("candy1", 2.0), ("candy3", 6.0)))
+candyTx.collectAsMap()
+
+scala.collection.Map[String,Double] = Map(candy2 -> 3.5, candy1 -> 2.0,candy3 -> 6.0)
+
+Notice if the dataset contains multiple rows with the same key, it will be collapsed into a single entry in the map. There are four rows in the candyTx pair RDD; however,there are only three rows in the output. Two candy1 rows are collapsed into a single row.
+
+lookup(key)
+-----------
+This action can be used as a quick way to verify whether a particular key exists in the RDD. If there is more
+than one row with the same key, then the value of all those rows will be returned.
+
+val candyTx = sc.parallelize(List(("candy1", 5.2), ("candy2", 3.5),("candy1", 2.0), ("candy3", 6.0)))
+candyTx.lookup("candy1")
+candyTx.lookup("candy2")
+candyTx.lookup("candy5")
+
+O/P
+----
+Seq[Double] = WrappedArray(5.2, 2.0)
+Seq[Double] = WrappedArray(3.5)
+Seq[Double] = WrappedArray()
+
+Understand Data Shuffling
+-------------------------
+Certain key/value transformations and actions require moving data from multiple partitions to other partitions, meaning across executors and machines. This process is known as the shuffle, which is quite important to be familiar with because it is an expensive operation. 
+
+During the shuffling process, the data needs to be serialized,written to disk, transferred over the network, and finally deserialized. It is not possible to completely avoid the shuffling, but there are techniques or best practices to minimize the need to shuffle the data. Shuffling data will add latency to the completion of the data processing in your Spark jobs.
+
+Let’s take the reduceByKey transformation as an example to understand the shuffle. This transformation needs to read data from all partitions to find all the values for all keys in the RDD, and for each key it brings all the values from different partitions together to compute the final value. To prepare for the shuffle, each partition prepares the data by sorting them based on the targeted partition and then writing them to a
+single file. On the targeted partition, it will read the relevant blocks of this file based on its partition index.
+
+In general, any transformation or action that performs some sort of grouping, aggregating, or joining by key will need to perform data shuffling. Here is a subset of the transformations that fall into this category: groupByKey, reduceByKey, aggregateByKey,and join.
+
+Having Fun with RDD Persistence
+-------------------------------
+One of the distinguishing features of Spark from other data processing engines or frameworks is the ability to persist the data of an RDD in memory across all the executors in a cluster. Once the data of an RDD is persisted in memory, then any future computations on that data will be really fast, often more than ten times the data that is not in memory.
+
+There are two typical use cases that can tremendously benefit from the data persisted in memory. 
+
+The first one is data exploration or interactive analysis. Let’s say there is a large service log file that is several hundred gigabytes, and there is a need to perform analysis on various types of exceptions. The first step is to filter this log file down to only the lines that contain the key word Exception and then cache that
+dataset in memory. Subsequent exploratory and interactive analysis of various types of exceptions can be done on that dataset in memory, and they will be very fast.
+
+The second use case is the iterative algorithms. Machine learning algorithms are often iterative in nature, meaning they will run through many iterations to optimize the loss function. In this process, they might use one or more datasets that don’t change with each iteration; therefore, if those datasets are persisted, then that will help speeding up the time it takes for the algorithms to complete.
+
+Persisting an RDD is extremely simple to do by calling the transformation persist() or cache(). Since they are transformations, only once a subsequent action is taken will the RDD be persisted in memory.By default, Spark will persist the dataset in memory.
+
+One question to ask is what happens if there isn’t sufficient memory in all the executors in your Spark applications to persist an RDD in memory. For instance, let’s say a Spark application has ten executors and each one has 6GB of RAM. If the size of an RDD you would like to persist in memory is 70GB, then that wouldn’t fit into 60GB of RAM. This is where the storage-level concept comes in. There are two options that you can specify when persisting the data of an RDD in memory: location and serialization.
+
+The location option determines whether the data of an RDD should be stored in memory or on disk or a combination of the two. The serialization option determines whether the data in the RDD should be stored as a serialized object or not. 
+
+Please see the table in PDF.
+
+If the data of an RDD is no longer needed to be persisted in memory, then you can use the unpersist() function to remove it from memory to make room for other RDDs.A Spark cluster usually has a limited amount of memory; if you keep persisting RDDs,Spark will use the LRU eviction policy to automatically evict the RDDs that have not been recently accessed.
+
+The RDDs can also be stored in-memory while we use persist() method. Also, we can use it across parallel operations. There is only one difference between cache() and persist(). while using cache() the default storage level is MEMORY_ONLY. And, while using persist() we can use various storage levels.
+
+a. MEMORY_ONLY
+In this storage level, RDD is stored as deserialized Java object in the JVM. If the size of RDD is greater than memory, It will not cache some partition and recompute them next time whenever needed. In this level the space used for storage is very high, the CPU computation time is low, the data is stored in-memory. It does not make use of the disk.
+
+b. MEMORY_AND_DISK
+In this level, RDD is stored as deserialized Java object in the JVM. When the size of RDD is greater than the size of memory, it stores the excess partition on the disk, and retrieve from disk whenever required. In this level the space used for storage is high, the CPU computation time is medium, it makes use of both in-memory and on disk storage.
+
+c. MEMORY_ONLY_SER
+This level of Spark store the RDD as serialized Java object (one-byte array per partition). It is more space efficient as compared to deserialized objects, especially when it uses fast serializer. But it increases the overhead on CPU. In this level the storage space is low, the CPU computation time is high and the data is stored in-memory. It does not make use of the disk.
+
+d. MEMORY_AND_DISK_SER
+It is similar to MEMORY_ONLY_SER, but it drops the partition that does not fits into memory to disk, rather than recomputing each time it is needed. In this storage level, The space used for storage is low, the CPU computation time is high, it makes use of both in-memory and on disk storage.
+
+e. DISK_ONLY
+In this storage level, RDD is stored only on disk. The space used for storage is low, the CPU computation time is high and it makes use of on disk storage.
+Refer this guide for the detailed description of Spark in-memory computation.
+
+
+The cache() is used only the default storage level MEMORY_ONLY. But with persist(), you can specify which storage level you want. So cache() is the same as calling persist() with the default storage level. The default persist() will store the data in the JVM heap as unserialized objects. When you write data to a disk, that data is also always serialized.
+
+cache() will use MEMORY_ONLY. If you want to use something else, use persist(StorageLevel)

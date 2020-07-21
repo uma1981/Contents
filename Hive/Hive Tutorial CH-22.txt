@@ -1,0 +1,79 @@
+CHAPTER 22
+HCatalog
+------------
+Using Hive for data processing on Hadoop has several nice features beyond the ability to use an SQL-like language. It’s ability to store metadata means that users do not need to remember the schema of the data. It also means they do not need to know where the data is stored, or what format it is stored in. This decouples data producers, data consumers,
+and data administrators. Data producers can add a new column to the data without breaking their consumers’ data-reading applications.
+
+The majority of heavy Hadoop users do not use a single tool for data production and consumption. Often, users will begin with a single tool: Hive, Pig, MapReduce, or another tool. As their use of Hadoop deepens they will discover that the tool they chose is not optimal for the new tasks they are taking on.
+
+While tools such as Pig and MapReduce do not require metadata, they can benefit from it when it is present. Sharing a metadata store also enables users across tools to share data more easily. A workflow where data is loaded and normalized using MapReduce or Pig and then analyzed via Hive is very common. When all these tools share one
+metastore, users of each tool have immediate access to data created with another tool. No loading or transfer steps are required.
+
+HCatalog exists to fulfill these requirements. It makes the Hive metastore available to users of other tools on Hadoop. It provides connectors for MapReduce and Pig so that users of those tools can read data from and write data to Hive’s warehouse. 
+
+It has a command-line tool for users who do not use Hive to operate on the metastore with Hive DDL statements. It also provides a notification service so that workflow tools, such as Oozie, can be notified when new data becomes available in the warehouse.
+
+MapReduce
+----------
+Reading Data
+------------
+MapReduce uses a Java class InputFormat to read input data. Most frequently, these classes read data directly from HDFS. InputFormat implementations also exist to read data from HBase, Cassandra, and other data sources. The task of the InputFormat is twofold. First, it determines how data is split into sections so that it can be processed
+in parallel by MapReduce’s map tasks. Second, it provides a RecordReader, a class that MapReduce uses to read records from its input source and convert them to keys and values for the map task to operate on.
+
+HCatalog provides HCatInputFormat to enable MapReduce users to read data stored in Hive’s data warehouse. It allows users to read only the partitions of tables and columns that they need. And it provides the records in a convenient list format so that users do not need to parse them.
+
+When initializing HCatInputFormat, the first thing to do is specify the table to be read.This is done by creating an InputJobInfo class and specifying the database, table, and partition filter to use.
+
+InputJobInfo.java
+/**
+* Initializes a new InputJobInfo
+* for reading data from a table.
+* @param databaseName the db name
+* @param tableName the table name
+* @param filter the partition filter
+*/
+public static InputJobInfo create(String databaseName,
+String tableName,
+String filter) {
+...
+}
+databaseName name indicates the Hive database (or schema) the table is in. If this is null then the default database will be used. The tableName is the table that will be read. This must be non-null and refer to a valid table in Hive. filter indicates which partitions the user wishes to read. If it is left null then the entire table will be read. Care should be used here, as reading all the partitions of a large table can result in scanning a large
+volume of data.
+
+There are some other java codes, you can refer in pdf if you need.
+
+Writing Data
+------------
+Similar to reading data, when writing data, the database and table to be written to need to be specified. If the data is being written to a partitioned table and only one partition is being written, then the partition to be written needs to be specified as well:
+
+/**
+* Initializes a new OutputJobInfo instance for writing data from a table.
+* @param databaseName the db name
+* @param tableName the table name
+* @param partitionValues The partition values to publish to, can be null or empty Map
+*/
+
+public static OutputJobInfo create(String databaseName,
+	String tableName,
+	Map<String, String> partitionValues) {
+	...
+}
+ 
+The databaseName name indicates the Hive database (or schema) the table is in. If this is null then the default database will be used. The tableName is the table that will be written to. This must be non-null and refer to a valid table in Hive. partitionValues indicates which partition the user wishes to create. If only one partition is to be written, the map must uniquely identify a partition.
+
+There are some other java codes, you can refer in pdf if you need.
+
+Command Line
+------------
+Since HCatalog utilizes Hive’s metastore, Hive users do not need an additional tool to interact with it. They can use the Hive command-line tool as before. However, for HCatalog users that are not also Hive users, a command-line tool hcat is provided. This tool is very similar to Hive’s command line. The biggest difference is that it only accepts
+commands that do not result in a MapReduce job being spawned.
+
+Security Model
+--------------
+HCatalog does not make use of Hive’s authorization model. However, user authentication in HCatalog is identical to Hive.
+
+Not that much important.
+
+Architecture
+------------
+Please see the diagram in PDF

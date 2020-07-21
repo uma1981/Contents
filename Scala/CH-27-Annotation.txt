@@ -1,0 +1,59 @@
+Chapter 27
+Annotations
+------------
+Read this text file only and its enough
+------------
+Annotations are structured information added to program source code. Like comments, they can be sprinkled throughout a program and attached to any variable, method, expression, or other program element. Unlike comments, they have structure, thus making them easier to machine process.
+
+As a simple example, I might write a Scala class like this, forcing myself to put the @impure annotation before the randomInt method definition:
+
+case class Numbers 
+{
+    @impure def randomInt: Int = scala.util.Random.nextInt
+}
+
+This is a trivial example, but as mentioned there are two possible benefits of this:
+
+1. It makes it clear to anyone who looks at the method signature or Scaladoc that this method is impure.
+2. If there’s some way to make the function pure in the future (such as when I learn more about FP), I can come back and re-work the function then.
+
+27.2 Syntax of annotations
+-----------------------------
+A typical use of an annotation looks like this:
+@deprecated def bigMistake() = //...
+
+In the previous example, a method is annotated as @deprecated. Annotations are allowed in other places too. Annotations are allowed on any kind of declaration or definition, including vals, vars, defs, classes, objects, traits, and types
+
+Annotations can also be applied to an expression, as with the @unchecked annotation for pattern matching (see Chapter 15). To do so, place a colon (:) after the expression and then write the annotation.
+
+(e: @unchecked) match {
+// nonexhaustive
+cases...
+}
+
+27.3 Standard annotations
+-------------------------
+Deprecation
+------------
+Sometimes you write a class or method that you later wish you had not. Once it is available, though, code written by other people might call the method. Thus, you cannot simply delete the method, because this would cause other people’s code to stop compiling.
+
+Deprecation lets you gracefully remove a method or class that turns out to be a mistake. You mark the method or class as deprecated, and then anyone who calls that method or class will get a deprecation warning. They had better heed this warning and update their code! The idea is that after a suitable amount of time has passed, you feel safe in assuming that all reasonable clients will have stopped accessing the deprecated class or method and thus that you can safely remove it.
+
+You mark a method as deprecated simply by writing @deprecated before it. For example:
+@deprecated def bigMistake() = //...
+
+Such an annotation will cause the Scala compiler to emit deprecation warnings whenever Scala code accesses the method.
+If you supply a string as an argument to @deprecated, that string will be emitted along with the error message. Use this message to explain to developers what they should use instead of the deprecated method.
+
+@deprecated("use newShinyMethod() instead")
+def bigMistake() = //...
+
+Now any callers will get a message like this:
+
+$ scalac deprecation
+Deprecation2.scala
+Deprecation2.scala:33: warning: method bigMistake in object
+Deprecation2 is deprecated: use newShinyMethod() instead
+bigMistake()
+ˆ
+one warning found

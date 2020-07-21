@@ -1,0 +1,209 @@
+Abstract Members
+----------------
+A member of a class or trait is abstract if the member does not have a complete definition in the class.Abstract members are intended to be implemented in subclasses of the class in which they are declared.
+
+20.1 A quick tour of abstract members
+-------------------------------------
+The following trait declares one of each kind of abstract member: an abstract type (T), method (transform), val (initial), and var (current):
+
+trait Abstract 
+{
+ type T
+ def transform(x: T): T
+ val initial: T
+ var current: T
+}
+
+A concrete implementation of Abstract needs to fill in definitions for each of its abstract members. Here is an example implementation that provides these definitions:
+
+class Concrete extends Abstract 
+{
+ type T = String
+ def transform(x: String) = x + x
+ val initial = "hi"
+ var current = initial
+}
+
+20.3 Abstract vals
+------------------
+val initial: String
+
+It gives a name and type for a val, but not its value. This value has to be provided by a concrete val definition in a subclass. For instance, class Concrete implemented the val using:
+
+val initial = "hi"
+
+You use an abstract val declaration in a class when you do not know the correct value in the class, but you do know that the variable will have an unchangeable value in each instance of the class.
+
+An abstract val declaration resembles an abstract parameterless method declaration such as:
+
+def initial: String
+
+Client code would refer to both the val and the method in exactly the same way, i.e., obj.initial. However, if initial is an abstract val, the client is guaranteed that obj.initial will yield the same value every time it is referenced. If initial were an abstract method, that guarantee would not hold, because in that case initial could be implemented by a concrete method that returns a different value every time it’s called.
+
+An abstract val constrains its legal implementation: any implementation must be a val definition; it may not be a var or a def. Abstract method declarations, on the other hand, may be implemented by both concrete method definitions and concrete val definitions. Class Apple would be a legal subclass implementation, but class BadApple would not.
+
+abstract class Fruit {
+val v: String // ‘v’ for value
+def m: String // ‘m’ for method
+}
+abstract class Apple extends Fruit {
+val v: String
+val m: String // OK to override a ‘def’ with a ‘val’
+}
+abstract class BadApple extends Fruit {
+def v: String // ERROR: cannot override a ‘val’ with a ‘def’
+def m: String
+}
+
+20.4 Abstract vars
+------------------
+Like an abstract val, an abstract var declares just a name and a type, but not an initial value
+
+trait AbstractTime {
+var hour: Int
+var minute: Int
+}
+
+vars declared as members of classes come equipped with getter and setter methods. This holds for abstract vars as well. If you declare an abstract var named hour, for example, you implicitly declare an abstract getter method, hour, and an abstract setter method, hour_=.
+
+For instance, the definition of AbstractTime shown above is exactly equivalent to the definition shown below
+
+trait AbstractTime {
+def hour: Int // getter for ‘hour’
+def hour_=(x: Int) // setter for ‘hour’
+def minute: Int // getter for ‘minute’
+def minute_=(x: Int) // setter for ‘minute’
+}
+
+20.5 Initializing abstract vals
+-------------------------------
+Check this later, in PDF.Not able to understand.
+
+20.6 Abstract types
+-------------------
+In the beginning of this chapter, you saw, “type T”, an abstract type declaration.The rest of this chapter discusses what such an abstract type declaration means and what it’s good for. 
+
+Like all other abstract declarations, an abstract type declaration is a placeholder for something that will be defined
+concretely in subclasses. In this case, it is a type that will be defined further down the class hierarchy. So T above refers to a type that is at yet unknown at the point where it is declared. Different subclasses can provide different
+realizations of T.
+
+class Food
+abstract class Animal 
+{
+	def eat(food: Food)
+}
+
+You might then attempt to specialize these two classes to a class of Cows that eat Grass:
+
+class Grass extends Food
+class Cow extends Animal 
+{
+	override def eat(food: Grass) {} // This won’t compile
+}
+
+However, if you tried to compile the new classes, you’d get the following compilation errors:
+
+What happened is that the eat method in class Cow does not override the eat method in class Animal, because its parameter type is different—it’s Grass in class Cow vs. Food in class Animal.
+
+For instance, the following script would pass the type checker:
+
+class Food
+abstract class Animal {
+	def eat(food: Food)
+}
+class Grass extends Food
+class Cow extends Animal {
+	override def eat(food: Grass) {} // This won’t compile,
+} // but if it did,...
+class Fish extends Food
+val bessy: Animal = new Cow
+bessy eat (new Fish) // ...you could feed fish to cows.
+
+What you need to do instead is apply some more precise modeling.Animals do eat Food, but what kind of Food each Animal eats depends on the Animal. This can be neatly expressed with an abstract type
+
+class Food
+abstract class Animal {
+	type SuitableFood <: Food
+	def eat(food: SuitableFood)
+}
+
+That’s why SuitableFood is modeled as an abstract type. The type has an upper bound, Food, which is expressed by the “<: Food” clause. This means that any concrete instantiation of SuitableFood (in a subclass of Animal) must be a subclass of Food.
+
+class Grass extends Food
+class Cow extends Animal {
+	type SuitableFood = Grass
+	override def eat(food: Grass) {}
+}
+
+Please see the below URL
+
+https://www.journaldev.com/9609/scala-typebounds-upper-lower-and-view-bounds
+
+20.7 Path-dependent types
+-------------------------
+Please see PDF, not able to understand.
+
+20.8 Structural subtyping
+--------------------------
+Please see PDF, not able to understand
+
+20.9 Enumerations
+-----------------
+Scala does not need special syntax for enumerations. Instead, there’s a class in its standard library, scala.Enumeration. To create a new enumeration, you define an object that extends this class, as in the following example, which defines a new enumeration of Colors:
+
+object Color extends Enumeration 
+{
+	val Red = Value
+	val Green = Value
+	val Blue = Value
+}
+
+Scala lets you also shorten several successive val or var definitions with the same right-hand side. Equivalently to the above you could write:
+
+object Color extends Enumeration {
+	val Red, Green, Blue = Value
+}
+
+This object definition provides three values: Color.Red, Color.Green, and Color.Blue. 
+
+You could also import everything in Color with: import Color._
+
+and then just use Red, Green, and Blue
+
+This means that a value such as Color.Red is of type Color.Value. Color.Value is the type of all enumeration values defined in object Color. It’s a path-dependent type, with Color being the path and Value being the dependent type. What’s
+significant about this is that it is a completely new type, different from all other types. In particular, if you would define another enumeration, such as:
+
+object Direction extends Enumeration 
+{
+	val North, East, South, West = Value
+}
+
+then Direction.Value would be different from Color.Value because the path parts of the two types differ
+
+Scala’s Enumeration class also offers many other features found in the enumeration designs of other languages. You can associate names with enumeration values by using a different overloaded variant of the Value method:
+
+object Direction extends Enumeration 
+{
+val North = Value("North")
+val East = Value("East")
+val South = Value("South")
+val West = Value("West")
+}
+
+You can iterate over the values of an enumeration via the set returned by the enumeration’s values method:
+
+Values of an enumeration are numbered from 0, and you can find out the number of an enumeration value by its id method:
+
+scala> Direction.East.id
+res14: Int = 1
+
+It’s also possible to go the other way, from a non-negative integer number to the value that has this number as id in an enumeration:
+scala> Direction(1)
+res15: Direction.Value = East
+
+&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+Please see the below URL for better understanding.
+
+https://www.journaldev.com/8415/scala-abstract-types
+
+https://www.journaldev.com/9585/scala-variances-covariant-invariant-contravariant

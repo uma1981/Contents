@@ -1,0 +1,6 @@
+CHAPTER 16
+Hive Thrift Service
+--------------------
+Hive has an optional component known as HiveServer or HiveThrift that allows access to Hive over a single port. Thrift is a software framework for scalable cross-language services development.Thrift allows clients using languages including Java, C++, Ruby, and many others, to programmatically access Hive remotely.
+
+If you want more info, you ca read it in PDF, Not that much important.

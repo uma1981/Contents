@@ -1,0 +1,229 @@
+Chapter 9
+Control Abstraction
+-------------------
+
+9.1 Reducing code duplication
+-----------------------------
+Higher-order functions are functions that take functions as parameters give you extra opportunities to condense and simplify code.
+
+One benefit of higher-order functions is they enable you to create control abstractions that allow you to reduce code duplication. For example, You could provide such an API by defining a public filesEnding method inside a singleton object like this:
+
+object FileMatcher 
+{
+private def filesHere = (new java.io.File(".")).listFiles
+def filesEnding(query: String) =
+for (file <- filesHere; if file.getName.endsWith(query))
+yield file
+}
+
+The filesEnding method obtains the list of all files in the current directory using the private helper method filesHere, then filters them based on whether each file name ends with the user-specified query. Given filesHere is private, the filesEnding method is the only accessible method defined in FileMatcher, the API you provide to your users.So far so good, and there is no repeated code yet.
+
+Later on, though, you decide to let people search based on any part of the file name. This is good for when your users cannot remember if they named a file phbimportant. doc, stupidphbreport. doc, may2003salesdoc.phb, or something entirely
+different, but they think that “phb” appears in the name somewhere. You go back to work and add this function to your FileMatcher API:
+
+def filesContaining(query: String) =
+for (file <filesHere; if file.getName.contains(query))
+yield file
+
+This function works just like filesEnding. It searches filesHere, checks the name, and returns the file if the name matches. The only difference is that this function uses contains instead of endsWith. The months go by, and the program becomes more successful. Eventually, you give in to the requests of a few power users who want to search based on regular expressions. These sloppy guys have immense directories with thousands of files, and they would like to do things like find all “pdf” files that have “oopsla” in the title somewhere. To support them, you write
+this function:
+
+def filesRegex(query: String) =
+for (file <- filesHere; if file.getName.matches(query))
+yield file
+
+Experienced programmers will notice all of this repetition and wonder if it can be factored into a common helper function. Doing it the obvious way does not work, however. You would like to be able to do the following:
+
+def filesMatching(query: String, method) =
+for (file <- filesHere; if file.getName.method(query))
+yield file
+
+This approach would work in some dynamic languages, but Scala does not allow pasting together code at runtime like this. So what do you do?
+
+Function values provide an answer. While you cannot pass around a method name as a value, you can get the same effect by passing around a function value that calls the method for you.
+
+def filesMatching(query: String, matcher: (String, String) => Boolean) = {
+for (file <-filesHere; if matcher(file.getName, query))
+yield file
+}
+
+This function takes two string arguments—the file name and the query—and returns a boolean, so the type of this function is (String, String) => Boolean. Given this new filesMatching helper method, you can simplify the three searching methods by having them call the helper method, passing in an appropriate function:
+
+def filesEnding(query: String) =
+filesMatching(query, _.endsWith(_))
+
+def filesContaining(query: String) =
+filesMatching(query, _.contains(_))
+
+def filesRegex(query: String) =
+filesMatching(query, _.matches(_))
+
+This code is already simplified, but it can actually be even shorter.
+
+
+object FileMatcher {
+private def filesHere = (new java.io.File(".")).listFiles 
+
+private def filesMatching(matcher: String => Boolean) =
+for (file <- filesHere; if matcher(file.getName))
+yield file
+
+def filesEnding(query: String) = filesMatching(_.endsWith(query))
+
+def filesContaining(query: String) = filesMatching(_.contains(query))
+
+def filesRegex(query: String) = filesMatching(_.matches(query))
+}
+
+Please see the example in Intelli-J
+
+
+9.2 Simplifying client code
+---------------------------
+Consider exists, a method that determines whether a passed value is contained in a collection. You could of course search for an element by having a var initialized to false, looping through the collection checking each item, and setting the var to true if you find what you are looking for. Here’s a method that uses this approach to determine whether a passed List
+contains a negative number:
+
+def containsNeg(nums: List[Int]): Boolean = {
+var exists = false
+for (num <- nums)
+if (num < 0)
+exists = true
+exists
+}
+
+If you define this method in the interpreter, you can call it like this:
+scala> containsNeg(List(1, 2, 3, 4))
+res0: Boolean = false
+scala> containsNeg(List(1, 2, -3,4))
+res1: Boolean = true
+
+A more concise way to define the method, though, is by calling the higherorder function exists on the passed List, like this:
+
+def containsNeg(nums: List[Int]) = nums.exists(_ < 0)
+
+This version of containsNeg yields the same results as the previous:
+scala> containsNeg(Nil)
+res2: Boolean = false
+
+scala> containsNeg(List(0, -1, -2))
+res3: Boolean = true
+
+The exists method represents a control abstraction. It is a special-purpose looping construct provided by the Scala library rather than being built into the Scala language like while or for.
+
+def containsOdd(nums: List[Int]): Boolean = {
+var exists = false
+for (num <nums)
+if (num % 2 == 1)
+exists = true
+exists
+}
+
+If you compare the body of containsNeg with that of containsOdd, you’ll find that everything is repeated except the test condition of an if expression. Using exists, you could write this instead: 
+
+def containsOdd(nums: List[Int]) = nums.exists(_ % 2 == 1)
+
+9.3 Currying
+------------
+To understand how to make control abstractions that feel more like language extensions, you first need to understand the functional programming technique called currying.
+
+Currying is the technique of transforming a function with multiple arguments into a function with just one argument. 
+
+A curried function is applied to multiple argument lists, instead of just one. Below shows a regular, non-curried function, which adds two Int parameters, x and y.
+
+scala> def plainOldSum(x: Int, y: Int) = x + y
+plainOldSum: (x: Int,y: Int)Int
+scala> plainOldSum(1, 2)
+res4: Int = 3
+
+shows a similar function that’s curried. Instead of one list of two Int parameters, you apply this function to two lists of one Int parameter each.
+
+scala> def curriedSum(x: Int)(y: Int) = x + y
+curriedSum: (x: Int)(y: Int)Int
+
+scala> curriedSum(1)(2)
+res5: Int = 3
+
+What’s happening here is that when you invoke curriedSum, you actually get two traditional function invocations back to back. The first function invocation takes a single Int parameter named x, and returns a function value for the second function. This second function takes the Int parameter y. Here’s a function named first that does in spirit what the first traditional function invocation of curriedSum would do:
+
+scala> def first(x: Int) = (y: Int) => x + y
+first: (x: Int)(Int) => Int
+
+Applying 1 to the first function—in other words, invoking the first function and passing in 1—yields the second function:
+
+scala> val second = first(1)
+second: (Int) => Int = <function1>
+
+Applying 2 to the second function yields the result:
+
+scala> second(2)
+res6: Int = 3
+
+You can use the placeholder notation to use curriedSum in a partially applied function expression, like this:
+
+scala> val onePlus = curriedSum(1)_
+onePlus: (Int) => Int = <function1>
+
+The underscore in curriedSum(1)_ is a placeholder for the second parameter list.2 The result is a reference to a function that, when invoked, adds one to its sole Int argument and returns the result:
+
+scala> onePlus(2)
+res7: Int = 3
+
+And here’s how you’d get a function that adds two to its sole Int argument:
+
+scala> val twoPlus = curriedSum(2)_
+twoPlus: (Int) => Int = <function1>
+
+scala> twoPlus(2)
+res8: Int = 4
+
+9.4 Writing new control structures
+----------------------------------
+In languages with first-class functions, you can effectively make new control structures even though the syntax of the language is fixed. All you need to do is create methods that take functions as arguments.
+
+Please see the example 4 and 5 in Intelli-J, how functions are passed as paremeters.
+
+9.5 By-name parameters
+----------------------
+A call-by-name mechanism passes a code block to the call and each time the call accesses the parameter, the code block is executed and the value is calculated. For better understanding please see the below URL given in last.
+
+“This indicates that the argument is not evaluated at the point of function application, but instead is evaluated at each use within the function. That is, the argument is evaluated using call-by-name.”
+
+var assertionsEnabled = true
+def myAssert(predicate: () => Boolean) =
+if (assertionsEnabled && !predicate())
+throw new AssertionError
+
+The definition is fine, but using it is a little bit awkward:
+myAssert(() => 5 > 3)
+
+You would really prefer to leave out the empty parameter list and => symbol in the function literal and write the code like this:
+myAssert(5 > 3) // Won’t work, because missing () =>
+
+Because myAssert states that predicate is a function that takes no input parameters and returns a Boolean, that’s how you have to write this line of code. It works, but it’s not pleasing to the eye.
+
+The solution is to change predicate to be a by-name parameter:
+
+def byNameAssert(predicate: => Boolean) =
+    if (assertionsEnabled && !predicate)
+        throw new AssertionError
+
+With that simple change, you can now write assertions like this:
+
+byNameAssert(5 > 3)
+
+That’s much more pleasing to look at than this:
+
+myAssert(() => 5 > 3)
+
+
+As you can see from that code, there’s only a small syntactical difference between defining a function input parameter that takes no input parameters and a by-name parameter:
+
+p: () => Boolean    // a function input parameter
+p: => Boolean       // a by-name parameter
+
+As you can also tell from these two lines:
+
+myAssert(() => 5 > 3)
+byNameAssert(5 > 3)
+
+FOR MORE Clarifications, please see the below URL https://alvinalexander.com/source-code/scala/simple-scala-call-name-example

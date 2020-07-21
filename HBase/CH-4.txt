@@ -1,0 +1,238 @@
+4.1 How to approach schema design
+--------------------------------
+TwitBase users would like to follow twits from other users, as you can imagine. To provide that ability, the first step is to maintain a list of everyone a given user follows. For instance, TheFakeMT follows both TheRealMT and HRogers. To populate all the twits that TheFakeMT should see when they log in, you begin by looking at the list {TheRealMT,HRogers} and reading the twits for each user in that list. This information needs to be persisted in an HBase table
+
+Let’s start thinking about the schema for that table. When we say schema, we include the following considerations:
+
+■ How many column families should the table have?
+■ What data goes into what column family?
+■ How many columns should be in each column family?
+■ What should the column names be? Although column names don’t have to be defined on table creation, you need to know them when you write or read data.
+■ What information should go into the cells?
+■ How many versions should be stored for each cell?
+■ What should the rowkey structure be, and what should it contain?
+
+4.1.1 Modeling for the questions
+--------------------------------
+Let’s return to the table, which will store data about what users a particular user follows. Access to this table follows two patterns: read the entire list of users, and query for the presence of a specific user in that list, “Does TheFakeMT follow TheRealMT?”
+That’s a relevant question, given that TheFakeMT wants to know everything possible about the real one. In that case, you’d be interested in checking whether TheRealMT exists in the list of users TheFakeMT follows. A possible solution is to have a row for each user, with the user ID being the rowkey and each column representing a user they follow.
+
+To store these relationships, you can create a new table called follows that looks like figure 4.1(in page 87).
+
+Let’s look at it in a little more depth and make sure you have the optimal table design. Keep in mind that once the table is created, changing any of its column families will require that the table be taken offline.
+
+With a table design as shown in figure 4.1(in page 87)., a table with data looks like figure 4.2.(in page 88).
+
+Now you need to validate that this table satisfies your requirements. To do so, it’s important to define the access patterns—that is, how data in your HBase tables is accessed by the application. Ideally, you should do that as early in the process as possible.
+
+To define the access patterns, a good first step is to define the questions you want to answer using this table. For instance, in TwitBase, you want this table to answer, “Whom does TheFakeMT follow?” Thinking further along those lines, you can come up with the following questions:
+
+1 Whom does TheFakeMT follow?
+2 Does TheFakeMT follow TheRealMT?
+3 Who follows TheFakeMT?
+4 Does TheRealMT follow TheFakeMT?
+
+“Whom does TheFakeMT follow?”(question 1) can be answered by a simple get() call on the table you just designed. It gives you the entire row, and you can iterate over the list to find the users TheFakeMT follows. The code looks like this:
+
+Get g = new Get(Bytes.toBytes("TheFakeMT"));
+Result result = followsTable.get(g);
+
+The result set returned can be used to answer questions 1 and 2. The entire list returned is the answer to question 1. You can create an array list like this:
+
+List<String> followedUsers = new ArrayList<String>();
+List<KeyValue> list = result.list();
+Iterator<KeyValue> iter = list.iterator();
+while(iter.hasNext()) {
+KeyValue kv = iter.next();
+followedUsers.add(Bytes.toString(kv.getValue()));
+}
+
+Answering question 2 means iterating through the entire list and checking for the existence of TheRealMT. The code is similar to the previous snippet, but instead of creating an array list, you compare at each step:
+
+String followedUser = "TheRealMT";
+List<KeyValue> list = result.list();
+Iterator<KeyValue> iter = list.iterator();
+while(iter.hasNext()) {
+KeyValue kv = iter.next();
+if(followedUser.equals(Bytes.toString(kv.getValue())));
+return true;
+}
+return false;
+
+It doesn’t get simpler than that, does it? Let’s continue building on this and ensure that your table design is the best you can accomplish and is optimal for all expected access patterns
+
+4.1.2 Defining requirements: more work up front always pays
+------------------------------------------------------------
+
+You now have a table design that can answer two out of the four questions on the earlier list. You haven’t yet ascertained whether it answers the other two questions. Also, you haven’t defined your write patterns. The questions so far define the read patterns
+for the table.
+
+When TheFakeMT follows one more user, you need to know that the user is number 5 in the list of users TheFakeMT follows. That information isn’t available to your client code without asking the HBase table. Also, there is no concept of asking HBase to add a cell to an existing row without specifying the column qualifier. To solve that problem, you have to maintain a counter somewhere. The best place to do that is the same row. In that case, the table now looks like figure 4.3(Page 89)
+
+The count column gives you the ability to quickly display the number of users anyone is following. You can answer the question “How many people does TheFakeMT follow?” by getting the count column without having to iterate over the entire list. This is good progress! Also notice that you haven’t needed to change the table definition so far. That’s HBase’s schema-less data model at work.
+
+Please see the figure in 4.3 and 4.4 in page 89 and 90.
+
+As you can see, keeping a count makes the client code complicated. Every time you have to add a user to the list of users A is following, you have to first read back the count from the HBase table, add the next user, and update the count. This process smells a lot like a transaction from the relational database systems you’ve likely worked with.
+
+Given that HBase doesn’t have the concept of transactions, this process has a couple of issues you should be aware of. First, it isn’t thread-safe. What if the user decides to follow two different users at the same time, maybe using two different browser windows
+or different devices?the threads processing those requests may read back the same count, and one may overwrite the other’s work. Second, what if the client thread dies halfway through that process?
+
+The only way you can solve this problem without making the client code complicated is to remove the counter. Again, you can use the schema-less data model to your advantage. One way to do it is to move the followed user ID into the column qualifier. Remember,
+HBase stores only byte[], and you can have an arbitrary number of columns within a column family. Let’s use those properties to your advantage and change the table to look like figure 4.5. You put the followed user’s username in the column qualifier instead of their position on the list of followed users. The cell value now can be anything. You need something to put there because cells can’t be empty, so you can enter the number 1. This is different from how you would design tables in relational systems.
+
+With this new table design, you’re back to not having to keep a count, and the client code can use the followed user ID in the column qualifier. That value is always unique, so you’ll never run into the problem of overwriting existing information. The code for adding new users to the followed list becomes much simpler:
+
+String newUserFollowed = "MTFanBoy2";
+Put p = new Put(Bytes.toBytes("TheFakeMT"));
+p.add(Bytes.toBytes("follows"),
+Bytes.toBytes(newUserFollowed),
+Bytes.toBytes(1));
+followsTable.put(p);
+
+The code for reading back the list changes a little. Instead of reading back the cell values, you now read back the column qualifiers. With this change in the design, you lose the count that was available earlier. Don’t worry about it right now; we’ll teach you
+how to implement that functionality in the next chapter.
+
+TIP HBase doesn’t have the concept of cross-row transactions. Avoid designs that require transactional logic in client code, because it leads to a complex client that you have to maintain.
+
+4.1.3 Modeling for even distribution of data and load
+-----------------------------------------------------
+TwitBase may have some users who follow many people. The implication is that the HBase table you just designed will have variable-length rows. That’s not a problem perse. But it affects the read patterns. Think about the question, “Does TheFakeMT follow TheRealMT?” With this table, how can this question be answered? A simple Get request specifying TheRealMT in the rowkey and TheFakeMT as the column qualifier will do the trick. This is an extremely fast operation for HBase.
+
+Consider the schema design shown in figure 4.6 for the follows table. Until now, you’ve been working with a table that’s designed to be a wide table. In other words, a single row contains lots of columns. The same information can be stored in the form of a tall table, which is the new schema in figure 4.6. The KeyValue objects in HFiles store the column family along with it. Keeping to short column family names makes a difference in reducing both disk and network I/O
+
+This new design for the table makes answering the second question, “Does The-FakeMT follow TheRealMT?” faster than it is with some of the previous designs. You can get() on a row with rowkey TheFakeMT+TheRealMT and get your answer. There’s only one cell in the column family, so you don’t need multiple KeyValues as in the previous design. In HBase, accessing a single narrow row resident in the BlockCache is the fastest possible read operation.
+
+Answering the first question, “Whom does TheFakeMT follow?” becomes an index lookup to the first block with a prefix of TheFakeMT followed by a scan on subsequent rows with rowkeys starting with TheFakeMT. From an I/O standpoint, you’re reading the same amount of data from the RegionServer when scanning those rows as compared to doing a Get on a single wide row and iterating over all the cells. Remember the HFile design?
+
+
+4.2 De-normalization is the word in HBase land
+------------------------------------------
+De-normalization is the opposite concept. Data is repeated and stored at multiple locations. This makes querying the data much easier and faster because you no longer need expensive JOIN clauses. From a performance standpoint, normalization optimizes for writes, and de-normalization optimizes for reads.
+
+One of the key concepts when designing HBase tables is de-normalization. We’ll explore it in detail in this section. So far, you’ve looked at maintaining a list of the users an individual user follows. When a TwitBase user logs in to their account and wants to see twits from the people they follow, your application fetches the list of followed users and their twits, returning that information. This process can take time as the number of users in the system grows. Moreover, if a user is being followed by lots of users, their twits are accessed every time a follower logs in. 
+
+In this case, you can de-normalize by having another table for twit streams. By doing this, you’ll take away the read-scalability issue and solve it by having multiple copies of the data (in this case, a popular user’s twits) available for all readers (the users following
+the popular user).
+
+As of now, you have the users table, the twits table, and the follows table. When a user logs in, you get their twit stream by using the following process:
+
+1 Get a list of people the user follows.
+2 Get the twits for each of those followed users.
+3 Combine the twits and order them by timestamp, latest first.
+
+You can use a couple of options to de-normalize. You can add another column family to the users table and maintain a stream there for each user. Or you can have another table for twit streams. Putting the twit stream in the users table isn’t ideal because the
+rowkey design of that table is such that it isn’t optimal for what you’re trying to do.
+Keep reading; you’ll see this reasoning soon.
+
+The access pattern for the twit stream table consists of two parts:
+■ Reading a list of twits to show to a given user when the user logs in, and displaying it in reverse order of creation timestamp (latest first)
+■ Adding to the list of twits for a user when any of the users they follow writes a twit
+
+Another thing to think about is the retention policy for the twit stream. You may want to maintain a stream of the twits from only the last 72 hours, for instance. We talk about Time To Live (TTL) later, as a part of advanced column family configurations.
+Using the concepts that we’ve covered so far, you can see that putting the user ID and the reverse timestamp in the rowkey makes sense. You can easily scan a set of rows in the table to retrieve the twits that form a user’s twit stream.
+
+
+4.3 Heterogeneous data in the same table
+----------------------------------------
+HBase schemas are flexible, and you’ll use that flexibility now to avoid doing scans every time you want a list of followers for a given user. The intent is to expose you to the various ideas involved in designing HBase tables. The relationships table as you have it now has the rowkey as follows:
+
+md5(user) + md5(followed user)
+
+You can add the relationship information to this key and make it look like this:
+
+md5(user) + relationship type + md5(user)
+
+That lets you store both kinds of relationships in the same table: following as well as followed by. when you’re looking for a list of followers for a user, you don’t want a list of users that the user follows in the dataset returned to your client application. You can accomplish this by specifying the start and end keys for the scan.
+
+Let’s look at another possible key structure: putting the relationship information in the first part of the key. The new key looks like this:
+
+relationship type + md5(user) + md5(user)
+
+Think about how the data is distributed across the RegionServers now. Everything for a particular type of relationship is collocated. If you’re querying for a list of followers more often than the followed list, the load isn’t well distributed across the various regions. That is the downside of this key design and the challenge in storing heterogeneous data in the same table.
+
+One of the challenges we haven’t addressed yet is keeping the two relationship entries consistent. When Mark Twain decides to follow his fanboy, two entries need to
+be made in the tables: one in the follows table and the other in the followedBy table. Given that HBase doesn’t allow inter-table or inter-row transactions, the client
+application writing these entries has to ensure that both rows are written. Failures happen all the time, and it will make the client application complicated if you try to implement transactional logic there. In an ideal world, the underlying database system should handle this for you; but design decisions are different at scale, and this isn’t a solved problem in the field of distributed systems at this point.
+
+4.4 Rowkey design strategies
+----------------------------
+TIP In designing HBase tables, the rowkey is the single most important thing. You should model keys based on the expected access pattern.
+
+Your rowkeys determine the performance you get while interacting with HBase tables. Two factors govern this behavior: the fact that regions serve a range of rows based on the rowkeys and are responsible for every row that falls in that range, and the fact that HFiles store the rows sorted on disk.These factors are interrelated.
+
+HFiles are formed when regions flush the rows they’re holding in memory; these rows are already in sorted order and get flushed that way as well. This sorted nature of HBase tables and their underlying storage format allows you to reason about performance based on how you design your keys and what you put in your column qualifiers. To refresh your memory about HFiles, look at figure 4.13; it’s the HFile you read about in chapter 2.
+
+Unlike relational databases, where you can index on multiple columns, HBase indexes only on the key; the only way to access data is by using the rowkey. If you don’t
+know the rowkey for the data you want to access, you’ll end up scanning a chunk of rows, if not the entire table. There are various techniques to design rowkeys that are optimized for different access patterns, as we’ll explore next.
+
+4.5 I/O considerations
+----------------------
+The sorted nature of HBase tables can turn out to be a great thing for your application—or not. For instance, when we looked at the twit stream table in the previous section, its sorted nature gave you the ability to quickly scan a small set of rows to find the latest twits.But the same sorted nature can hurt you when you’re trying to write a bunch of time-series data into an HBase table (remember hot-spotting?). If you choose your rowkey to be the timestamp, you’ll always be writing to a single region, whichever is responsible for the range in which the timestamp falls.
+
+In fact, you’ll always be writing to the end of a table, because timestamps are monotonically increasing in nature. This not only limits your throughput to what a single region can handle but also puts you at risk of overloading a single machine where other machines in the cluster are sitting idle.
+
+4.5.1 Optimized for writes
+--------------------------
+When you’re writing lots of data into HBase tables, you want to optimize by distributing the load across RegionServers. This isn’t all that hard to do, but you may have to make trade-offs in optimizing your read patterns: for instance, the time-series data example. If your data is such that you use the timestamp as the rowkey, you’ll hot-spot on a single region during write time. 
+
+The question is, how do you distribute that data across multiple regions? There are a few options to consider, and the answer depends on what kind of information you want your rowkeys to contain.
+
+HASHING
+-------
+If you’re willing to lose the timestamp information from your rowkey (which may be okay in cases where you need to scan the entire table every time you want to do something, or you know the exact key every time you want to read data), making your rowkey a hash of the original data is a possible solution:
+
+hash("TheRealMT") -> random byte[]
+
+You need to know "TheRealMT" every time you want to access the row that is keyed by the hashed value of this function.
+
+With time-series data, that generally isn’t the case. You most likely don’t know the specific timestamp when you access data; you probably have a time range in mind. But there are cases like the twits table or the relationship tables you created earlier, where you know the user ID and can calculate the hash to find the correct row. To achieve a good distribution across all regions, you can hash using MD5, SHA-1, or any other hash function of your choice that gives you random distribution.
+
+The way you use your hash function is also important. The relationship tables you built earlier in this chapter use MD5 hashes of the user IDs, but you can easily regenerate those when you’re looking for a particular user’s information. But note that you’re concatenating the MD5 hashes of two user IDs (MD5(user1) + MD5(user2)) rather than concatenating the user IDs and then hashing the result (MD5(user1 + user2)).
+
+The reason is that when you want to scan all the relationships for a given user, you pass start and stop rowkeys to your scanner object. Doing that when the key is a hash of the combination of the two user IDs isn’t possible because you lose the information for the given user ID from that rowkey.
+
+SALTING
+-------
+Salting is another trick you can have in your tool belt when thinking about rowkeys. Let’s consider the same time-series example discussed earlier. Suppose you know the time range at read time and don’t want to do full table scans. Hashing the timestamp and making the hash value the rowkey requires full table scans, which is
+highly inefficient, especially if you have the ability to limit the scan. Making the hash value the rowkey isn’t your solution here. You can instead prefix the timestamp with a random number
+
+For example, you can generate a random salt number by taking the hash code of the timestamp and taking its modulus with some multiple of the number of Region-
+Servers:
+
+int salt = new Integer(new Long(timestamp).hashCode()).shortValue() % <number of region servers>
+
+This involves taking the salt number and putting it in front of the timestamp to generate your timestamp:
+
+byte[] rowkey = Bytes.add(Bytes.toBytes(salt) \ + Bytes.toBytes("|") + Bytes.toBytes(timestamp));
+
+Now your rowkeys are something like the following:
+0|timestamp1
+0|timestamp5
+0|timestamp6
+1|timestamp2
+1|timestamp9
+2|timestamp4
+2|timestamp8
+
+0|timestamp1, 0|timestamp5, and 0|timestamp6 go to one region unless the region splits, in which case it’s distributed to two regions. 1|timestamp2 and 1|timestamp9 go
+to a different region, and 2|timestamp4 and 2|timestamp8 go to the third. Data for consecutive timestamps is distributed across multiple regions.
+
+4.5.2 Optimized for reads
+-------------------------
+Have to Read
+
+4.5.3 Cardinality and rowkey structure
+---------------------------------------
+Have to Read
+
+4.6 From relational to non-relational
+-------------------------------------
+Have to Read
+
+4.7 Advanced column family configurations
+-----------------------------------------
+HBase has a few advanced features that you can use when designing your tables. These aren’t necessarily linked to the schema or the rowkey design but define aspects of the behavior of the tables.
+
+4.7.1 Configurable block size
+-----------------------------

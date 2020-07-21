@@ -1,0 +1,6 @@
+
+This chapter “opens up the covers” and explains a bit how lists are implemented in Scala.
+
+Knowing the internals of the List class is useful for several reasons
+
+Please read the PDF if you want

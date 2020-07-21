@@ -1,0 +1,8 @@
+CHAPTER 17
+Storage Handlers and NoSQL
+--------------------------
+Storage Handlers are a combination of InputFormat, OutputFormat, SerDe, and specific code that Hive uses to treat an external entity as a standard Hive table. This allows the user to issue queries seamlessly whether the table represents a text file stored in Hadoop or a column family stored in a NoSQL database such as Apache HBase, Apache Cassandra,
+and Amazon DynamoDB. 
+
+Storage handlers are not only limited to NoSQL databases, a storage handler could be designed for many different kinds of data stores.
+

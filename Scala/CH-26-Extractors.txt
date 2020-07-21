@@ -1,0 +1,172 @@
+Chapter 26
+Extractors
+-----------
+This chapter explains what extractors are and how you can use them to define patterns that are decoupled from an object’s representation. 
+
+26.1 An example: extracting email addresses
+-------------------------------------------
+The traditional way to do this uses three helper functions:
+
+def isEMail(s: String): Boolean
+def domain(s: String): String
+def user(s: String): String
+
+With these functions, you could parse a given string s as follows:
+
+if (isEMail(s)) println(user(s) +" AT "+ domain(s))
+else println("not an email address")
+
+This works, but is kind of clumsy. What’s more, things would become more complicated if you combined several such tests.Let’s assume for the moment that you could match a string with a pattern:
+
+EMail(user, domain)
+
+s match {
+	case EMail(user, domain) => println(user +" AT "+ domain)
+	case _ => println("not an email address")
+}
+
+The more complicated problem of finding two successive email addresses with the same user part would translate to the following pattern:
+
+ss match {
+case EMail(u1, d1) :: EMail(u2, d2) :: _ if (u1 == u2) => ...
+...
+}
+
+26.2 Extractors
+---------------
+An extractor in Scala is an object that has a method called unapply as one of its members. The purpose of that unapply method is to match a value and take it apart.
+
+object EMail {
+	// The injection method (optional)
+	def apply(user: String, domain: String) = user +"@"+ domain
+	// The extraction method (mandatory)
+	def unapply(str: String): Option[(String, String)] = {
+		val parts = str split "@"
+		if (parts.length == 2) Some(parts(0), parts(1)) else None
+	}
+}
+
+This object defines both apply and unapply methods. The apply method has the same meaning as always: it turns EMail into an object that can be applied to arguments in parentheses in the same way a method is applied. So you can write EMail("John", "epfl.ch") to construct the string "John@epfl.ch".
+
+The unapply method is what turns EMail into an extractor. In a sense, it reverses the construction process of apply. Where apply takes two strings and forms an email address string out of them, unapply takes an email address and returns potentially two strings: the user and the domain of the address. 
+
+But unapply must also handle the case where the given string is not an email address. That’s why unapply returns an Option-type over pairs of strings. Its result is either Some(user, domain) if the string str is an email address with the given user and domain parts,1 or None, if str is not an email address. Here are some examples:
+
+unapply("John@epfl.ch") equals Some("John", "epfl.ch")
+unapply("John Doe") equals None
+
+In object EMail, the apply method is called an injection, because it takes some arguments and yields an element of a given set (in our case: the set of strings that are email addresses). 
+
+The unapply method is called an extraction, because it takes an element of the same set and extracts some of its parts (in our case: the user and domain substrings).
+
+26.3 Patterns with zero or one variables
+----------------------------------------
+Not that much important
+
+26.4 Variable argument extractors
+---------------------------------
+Not that much important
+
+26.5 Extractors and sequence patterns
+-------------------------------------
+You saw in Section 15.2 that you can access the elements of a list or an array using sequence patterns such as:
+
+List()
+List(x, y, _*)
+Array(x, 0, 0, _)
+
+In fact, these sequence patterns are all implemented using extractors in the standard Scala library
+
+The List object contains an apply method that takes a variable number of arguments. That’s what lets you write expressions such as:
+
+List()
+List(1, 2, 3)
+
+It also contains an unapplySeq method that returns all elements of the list as a sequence.
+
+26.6 Extractors versus case classes
+-----------------------------------
+Topic that much important but you can read it in PDF.
+
+26.7 Regular expressions
+------------------------
+One particularly useful application area of extractors are regular expressions. Like Java, Scala provides regular expressions through a library, but extractors make it much nicer to interact with them.
+
+Forming regular expressions
+---------------------------
+Scala inherits its regular expression syntax from Java, which in turn inherits most of the features of Perl. We assume you know that syntax already.Here are just some examples that should be enough as refreshers:
+
+ab? ---> An ‘a’, possibly followed by a ‘b’.
+
+\d+ ---> A number consisting of one or more digits represented by \d.
+
+[a-dA-D]\w* --> A word starting with a letter between a and d in lower or upper case, followed by a sequence of zero or more “word characters” denoted by \w. (A word character is a letter,digit, or underscore.)
+
+Scala’s regular expression class resides in package scala.util.matching.
+scala> import scala.util.matching.Regex
+
+A new regular expression value is created by passing a string to the Regex constructor. For instance:
+
+scala> val Decimal = new Regex("()?(\\d+)(\\.\\d*)?")
+
+Decimal: scala.util.matching.Regex = ()?(\d+)(\.\d*)?
+
+Note that, compared to the regular expression for decimal numbers given previously, every backslash appears twice in the string above. This is because in Java and Scala a single backslash is an escape character in a string literal,
+not a regular character that shows up in the string. So instead of ‘\’ you need to write ‘\\’ to get a single backslash in the string.
+
+If a regular expression contains many backslashes this might be a bit painful to write and to read. Scala’s raw strings provide an alternative. As you saw in Section 5.2, a raw string is a sequence of characters between triple quotes. The difference between a raw and a normal string is that all characters in a raw string appear exactly as they are typed. This includes backslashes, which are not treated as escape characters. So you could write equivalently and somewhat more legibly:
+
+scala> val Decimal = new Regex("""()?(\d+)(\.\d*)?""")
+Decimal: scala.util.matching.Regex = ()?(\d+)(\.\d*)?
+
+As you can see from the interpreter’s output, the generated result value for Decimal is exactly the same as before.
+Another, even shorter way to write a regular expression in Scala is this:
+
+scala> val Decimal = """()?(\d+)(\.\d*)?""".r
+Decimal: scala.util.matching.Regex = ()?(\d+)(\.\d*)?
+
+In other words, simply append a .r to a string to obtain a regular expression. This is possible because there is a method named r in class StringOps,which converts a string to a regular expression.
+
+Searching for regular expressions
+---------------------------------
+regex findFirstIn str
+Finds first occurrence of regular expression regex in string str, returning the result in an Option type.
+
+regex findAllIn str
+Finds all occurrences of regular expression regex in string str, returning the results in an Iterator.
+
+regex findPrefixOf str
+Finds an occurrence of regular expression regex at the start of string str, returning the result in an Option type.
+
+For instance, you could define the input sequence below and then search decimal numbers in it:
+
+scala> val Decimal = """()?(\d+)(\.\d*)?""".r
+Decimal: scala.util.matching.Regex = ()?(\d+)(\.\d*)?
+
+scala> val input = "for 1.0 to 99 by 3"
+input: java.lang.String = for 1.0 to 99 by 3
+
+scala> for (s <- Decimal findAllIn input)
+println(s)
+1.0
+99
+3
+scala> Decimal findFirstIn input
+res7: Option[String] = Some(1.0)
+
+scala> Decimal findPrefixOf input
+res8: Option[String] = None
+
+Extracting with regular expressions
+-----------------------------------
+What’s more, every regular expression in Scala defines an extractor. The extractor is used to identify substrings that are matched by the groups of the regular expression. For instance, you could decompose a decimal number string as follows:
+
+scala> val Decimal(sign, integerpart, decimalpart) = "1.23"
+sign: String = integerpart:
+String = 1
+decimalpart: String = .23
+
+What happens here is that the Decimal regular expression value defines an unapplySeq method. That method matches every
+string that corresponds to the regular expression syntax for decimal numbers.
+
+If the string matches, the parts that correspond to the three groups in the regular expression ()?(\d+)(\.\d*)? are returned as elements of the pattern and are then matched by the three pattern variables sign, integerpart, and decimalpart.

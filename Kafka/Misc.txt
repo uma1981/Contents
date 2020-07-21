@@ -1,0 +1,14 @@
+Below is good url
+
+https://www.learningjournal.guru/courses/kafka/kafka-foundation-training/consumer-groups/
+
+Kafka Group Coordinator
+-> One of the Kafka broker gets elected as a Group Coordinator. When a consumer wants to join a group, it sends a request to the coordinator. The first consumer to participate in a group becomes a leader.All other consumers joining later becomes the members of the group.
+-> Manage a list of group members. The coordinator is responsible for managing a list of group members. So, every time a new member joins the group, or an existing member leaves the group, the coordinator modifies the list.
+-> Initiates a rebalance activity(Block the read for all members)
+-> Communicate about new assignment to consumers
+
+Leader
+-> Executes the rebalance activity
+-> The group leader will take a list of current members, assign partitions to them and send it back to the coordinator.Sends new partition assignment to Co-Ordinator
+-> The important thing to note here is, during the rebalance activity, none of the consumers are allowed to read any message.

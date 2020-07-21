@@ -1,0 +1,51 @@
+Hive is a eco system and its a dataware housing tool,works on top of data processing layer like MR,TEZ and SPARK.Sql statement and table creation can be done in HIVE.
+
+Please see the diagram in note, how is integrating with existing setup.
+
+Once integration/conf done with Hadoop. HIVE can interact with HDFS through MR/TEZ/SPARK with help of YARN Administration. Default configuration with MR.
+
+Datatypes in HIVE.
+
+Creation of Hive table.
+
+Syntax to load data into HIVE
+
+load data inpath "user\credo\partm-00" into Hive DemoTable.
+
+Internal/Managed and External Tables. When creating HIVE tables we can specify Managed/External tables.
+
+When Dropping managed table both structure and data will be deleted
+
+When Dropping External table only structure will be deleted.
+
+Interview Questions
+-------------------
+1. Types of table
+2. Diff between ext and internal table
+3. What types of table used in your project.
+4. Partition and Bucketting.
+
+######################################################################################################
+All the jobs are run by YARN.
+
+While importing data into HIVE, when we speciy "localhost", it will refers the local file system
+
+if we are not specifying the local, then it will refers the HDFS file system.
+
+table creation syntax
+----------------------
+
+create <managed/external> table emp(id int,name string,city string)
+-- fields terminated by
+-- stored as auro file format.
+
+Default location in HDFS for HIVE
+---------------------------------
+user/hive/warehouse/<tablename>/date
+
+Hive functions
+--------------
+3 types of functions
+UDF -> user defined function
+UDAF -> user defined aggregate function
+UDTF -> user defined table generated function

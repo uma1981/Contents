@@ -1,0 +1,66 @@
+Deep Dive into Kafka Consumers
+==============================
+
+With Kafka, every consumer has a unique identity and they are in full control of how they want to read data from each Kafka topic partition. Every consumer has its own consumer offset that is maintained in Zookeeper and they set it to the next location when they read data from a Kafka topic.
+
+Understanding the responsibilities of Kafka consumers
+-----------------------------------------------------
+-> Subscribing to a topic: Consumer operations start with subscribing to a topic. If consumer is part of a consumer group, it will be assigned a subset of partitions from that topic. Consumer process would eventually read data from those assigned partitions. You can think of topic subscription as a registration process to read data from topic partitions.
+
+-> Consumer offset position: Kafka, unlike any other queues, does not maintain message offsets. Every consumer is responsible for maintaining its own consumer offset.
+
+-> Replay / rewind / skip messages: Kafka consumer has full control over starting offsets to read messages from a topic partition. Using consumer APIs, any consumer application can pass the starting offsets to read messages from topic partitions. They can choose to read messages from the beginning or from some specific integer offset value irrespective of what the current offset value of a partition is. In this way, consumers have the capability of replaying or skipping messages as per specific business scenarios.
+
+-> Heartbeats: It is the consumer's responsibility to ensure that it sends regular heartbeat signals to the Kafka broker (consumer group leader) to confirm their membership and ownership of designated partitions. If heartbeats are not received by the group leader in a certain time interval, then the partition's ownership would be reassigned to some other consumer in the consumer group.
+
+-> Offset commits: Kafka does not track positions or offsets of the messages that are read from consumer applications. It is the responsibility of the consumer application to track their partition offset and commit it. This has two advantages-this improves broker performance as they do not have to track each consumer offset and this gives flexibility to consumer applications in managing their offsets as per their specific scenarios. They can commit offsets after they finish processing a batch or they can commit offsets in the middle of very large batch processing to reduce side-effects of rebalancing.
+
+-> Deserialization: Kafka producers serialize objects into byte arrays before they are sent to Kafka. Similarly, Kafka consumers deserialize these Java objects into byte arrays. Kafka consumer uses the deserializers that are the same as serializers used in the producer application.
+
+Consumer configuration
+-----------------------
+-> bootstrap.servers: This property is similar to what we defined , for producer configuration. It takes a list of Kafka brokers' IPs.
+
+-> key.deserialize: This is similar to what we specified in producer. The difference is that in producer, we specified the class that can serialize the key of the message. Serialize means converting a key to a ByteArray. In consumer, we specify the class that can deserialize the ByteArray to a specific key type. Remember that the serializer used in producer should match with the equivalent deserializer class here; otherwise, you may get a serialization exception.
+
+-> value.deserializer: This property is used to deserialize the message. We should make sure that the deserializer class should match with the serializer class used to produce the data; for example, if we have used stringSerializer to serialize the message in producer, we should use stringDeserializer to
+deserialize the message.
+
+-> group.id: This property is not mandatory for the creation of a property but recommended to use while creating. You have learned in the previous section about consumer groups and their importance in performance. Defining a consumer group while creating an application always helps in managing
+consumers and increasing performance if needed.
+
+Committing and polling
+----------------------
+Polling is fetching data from the Kafka topic. Kafka returns the messages that have not yet been read by consumer. How does Kafka know that consumer hasn't read the messages yet? 
+
+Consumer needs to tell Kafka that it needs data from a particular offset and therefore,consumer needs to store the latest read message somewhere so that in case of consumer failure, consumer can start reading from the next offset.
+
+Kafka commits the offset of messages that it reads successfully. There are different ways in which commit can happen and each way has its own pros and cons. Let's start looking at the different ways available:
+
+Auto commit: This is the default configuration of consumer. Consumer autocommits the offset of the latest read messages at the configured interval of time. If we make enable.auto.commit = true and set
+auto.commit.interval.ms=1000, then consumer will commit the offset every second. There are certain risks associated with this option. For example, you set the interval to 10 seconds and consumer starts consuming the data. At the seventh second, your consumer fails, what will happen? Consumer hasn't
+committed the read offset yet so when it starts again, it will start reading from the start of the last committed offset and this will lead to duplicates.
+
+Current offset commit: Most of the time, we may want to have control over committing an offset when required. Kafka provides you with an API to enable this feature. We first need to do enable.auto.commit = false and then use the commitSync() method to call a commit offset from the consumer thread.
+This will commit the latest offset returned by polling. It would be better to use this method call after we process all instances of consumerRecord, otherwise there is a risk of losing records if consumer fails in between.
+
+Asynchronous commit: The problem with synchronous commit is that unless we receive an acknowledgment for a commit offset request from the Kafka server, consumer will be blocked. This will cost low throughput. It can be done by making commit happen asynchronously. However, there is a problem in asynchronous commit--it may lead to duplicate message processing in a few cases where the order of the commit offset changes. For example, offset of message 10 got committed before offset of message 5. In this case, Kafka will again serve message 5-10 to consumer as the latest offset 10 is overridden by 5.
+
+Additional configuration
+------------------------
+enable.auto.commit: If this is configured to true, then consumer will automatically commit the message offset after the configured interval of time. You can define the interval by setting auto.commit.interval.ms. However, the best idea is to set it to false in order to have control over when you want to commit the offset. This will help you avoid duplicates and miss any data to process
+
+fetch.min.bytes: This is the minimum amount of data in bytes that the Kafka server needs to return for a fetch request. In case the data is less than the configured number of bytes, the server will wait for enough data to accumulate and then send it to consumer. Setting the value greater than the default, that is, one byte, will increase server throughput but will reduce latency of the consumer application.
+
+request.timeout.ms: This is the maximum amount of time that consumer will wait for a response to the request made before resending the request or failing when the maximum number of retries is reached.
+
+auto.offset.reset: This property is used when consumer doesn't have a valid offset for the partition from which it is reading the value.
+latest: This value, if set to latest, means that the consumer will start reading from the latest message from the partition available at that time when consumer started.
+earliest: This value, if set to earliest, means that the consumer will start reading data from the beginning of the partition, which means that it will read all the data from the partition.
+none: This value, if set to none, means that an exception will be thrown to the consumer.
+
+session.timeout.ms: Consumer sends a heartbeat to the consumer group coordinator to tell it that it is alive and restrict triggering the rebalancer. The consumer has to send heartbeats within the configured period of time. For example, if timeout is set for 10 seconds, consumer can wait up to 10 seconds
+before sending a heartbeat to the group coordinator; if it fails to do so, the group coordinator will treat it as dead and trigger the rebalancer.
+
+max.partition.fetch.bytes: This represents the maximum amount of data that the server will return per partition. Memory required by consumer for the consumerRecord object must be bigger then numberOfParition*valueSet. This means that if we have 10 partitions and 1 consumer, and
+max.partition.fetch.bytes is set to 2 MB, then consumer will need 10*2 =20 MB for consumer record.
